@@ -16,7 +16,13 @@
       "database_name": "mini_game",
       "database_id": "ff1c5758-106e-4c96-aa52-7eb19367ca26"
     }
-  ]
+  ],
+	// 静态资源：把 public/ 下的 SPA 当网页直接服务；GET 由资源处理，
+	// POST(/api/* 与 webhook) 仍然进入 Worker。SPA 模式：未命中的 GET 回退到 index.html。
+	"assets": {
+		"directory": "./public",
+		"not_found_handling": "single-page-application"
+	}
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
