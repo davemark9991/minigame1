@@ -9,10 +9,12 @@ CREATE TABLE IF NOT EXISTS players (
   username        TEXT,
   balance         INTEGER NOT NULL DEFAULT 1000,
   free_spins_left INTEGER NOT NULL DEFAULT 3,
-  status          TEXT NOT NULL DEFAULT 'active'   -- active / banned
+  status          TEXT NOT NULL DEFAULT 'active',  -- active / banned
+  last_reset      TEXT                             -- 每日免费次数重置日期 YYYY-MM-DD(UTC)
 );
--- 老库若已存在 players 但没有 status 列，单独补一列（已存在会报错，可忽略）：
+-- 老库若已存在 players，按需单独补列（已存在会报错，可忽略）：
 -- ALTER TABLE players ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
+-- ALTER TABLE players ADD COLUMN last_reset TEXT;
 
 -- 流水表（每次抽奖 / 管理员调分写入）---------------------------------------
 CREATE TABLE IF NOT EXISTS transactions (

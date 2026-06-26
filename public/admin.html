@@ -268,7 +268,8 @@ async function viewOverview(){
     const cards = [
       ["玩家总数","👥",fmt(d.users),"var(--accent)"],
       ["系统总积分","💰",fmt(d.total_points),"var(--pos)"],
-      ["今日抽奖次数","🎰",fmt(d.today_spins),"var(--warn)"]
+      ["今日抽奖次数","🎰",fmt(d.today_spins),"var(--warn)"],
+      ["封禁玩家","🚫",fmt(d.banned),"var(--neg)"]
     ];
     const wrap = el("div","cards");
     cards.forEach(([k,ic,v,col])=>{
@@ -312,11 +313,15 @@ function renderUsers(rows){
     const act=el("td"); const wrap=el("div","rowact");
     const bg=el("button","btn pos sm","➕分"), bd=el("button","btn neg sm","➖分"),
           bs=el("button","btn ghost sm","次数"),
-          bb=el("button","btn "+(p.status==='banned'?"warn":"ghost")+" sm",p.status==='banned'?"解封":"封禁");
+          bb=el("button","btn "+(p.status==='banned'?"warn":"ghost")+" sm",p.status==='banned'?"解封":"封禁"),
+          bh=el("button","btn ghost sm","明细"),
+          bx=el("button","btn neg sm","🗑");
     bg.onclick=()=>adjustModal(p,1); bd.onclick=()=>adjustModal(p,-1);
     bs.onclick=()=>spinsModal(p);
     bb.onclick=()=>banPlayer(p);
-    wrap.append(bg,bd,bs,bb); act.appendChild(wrap); tr.appendChild(act); b.appendChild(tr);
+    bh.onclick=()=>playerHistory(p);
+    bx.onclick=()=>deletePlayer(p);
+    wrap.append(bg,bd,bs,bb,bh,bx); act.appendChild(wrap); tr.appendChild(act); b.appendChild(tr);
   });
 }
 function adjustModal(p,sign){
@@ -341,10 +346,31 @@ async function banPlayer(p){
   catch(e){ toast(e.message,"bad"); }
 }
 async function refreshUsers(){ const q=($("#uq")&&$("#uq").value.trim())||""; const d=await api("players",{q}); cachePlayers=d.players; renderUsers(d.players); }
+async function deletePlayer(p){
+  modal("删除玩家",`确定<b>永久删除</b> ${esc(p.username)||p.tg_id}？<br>该玩家及其全部流水记录将被清除，<b>不可恢复</b>。`,"",
+    async()=>{ try{ await api("player/delete",{tg_id:p.tg_id}); toast("已删除该玩家","ok"); closeModal(); refreshUsers(); }catch(e){ toast(e.message,"bad"); } });
+}
+async function playerHistory(p){
+  modal(`流水明细 · ${esc(p.username)||p.tg_id}`,`Telegram ID ${p.tg_id}`,
+    `<div id="phBody" style="max-height:340px;overflow:auto;margin-top:6px">加载中…</div>`, null);
+  $("#modalBox").style.width="520px";
+  try{
+    const d=await api("transactions",{q:String(p.tg_id),limit:100});
+    const rows=d.transactions.filter(t=>String(t.tg_id)===String(p.tg_id));
+    if(!rows.length){ $("#phBody").innerHTML='<div class="empty">暂无记录</div>'; return; }
+    $("#phBody").innerHTML=`<table style="width:100%"><thead><tr><th>时间(UTC)</th><th>类型</th><th>变动</th><th>余额</th></tr></thead><tbody>${
+      rows.map(t=>`<tr><td class="mono" style="color:var(--muted)">${esc(t.created_at)}</td>
+        <td><span class="pill type">${TYPE_LABEL[t.type]||esc(t.type)}</span></td>
+        <td class="mono ${t.amount>=0?'pos':'neg'}">${t.amount>=0?'+':''}${fmt(t.amount)}</td>
+        <td class="mono">${fmt(t.balance_after)}</td></tr>`).join("")}</tbody></table>`;
+  }catch(e){ $("#phBody").innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
+}
 
 /* ---------- Transactions ---------- */
+let txPage=0;
 async function viewTx(){
-  const exp = el("button","btn ghost sm","📥 导出 CSV"); exp.onclick=()=>exportCsv("transactions",cacheTx);
+  txPage=0;
+  const exp = el("button","btn ghost sm","📥 导出本页 CSV"); exp.onclick=()=>exportCsv("transactions",cacheTx);
   $("#toolbar").appendChild(exp);
   const panel=el("div","panel");
   panel.innerHTML=`<div class="ph"><h3>交易流水</h3><div class="filters">
@@ -353,15 +379,30 @@ async function viewTx(){
     </div></div>
     <div class="tbl-wrap"><table><thead><tr>
     <th>#</th><th>时间(UTC)</th><th>昵称</th><th>Telegram ID</th><th>类型</th><th>变动</th><th>余额</th><th>备注</th>
-    </tr></thead><tbody id="tbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody></table></div>`;
+    </tr></thead><tbody id="tbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody></table></div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 16px;border-top:1px solid var(--border)">
+      <span id="pageInfo" style="color:var(--muted);font-size:12.5px"></span>
+      <button class="btn ghost sm" id="prevPg">← 上一页</button>
+      <button class="btn ghost sm" id="nextPg">下一页 →</button>
+    </div>`;
   $("#content").innerHTML=""; $("#content").appendChild(panel);
+  const PAGE=50;
   const load=async()=>{
-    try{ const d=await api("transactions",{q:$("#tq").value.trim(),from:$("#tfrom").value,to:$("#tto").value,limit:1000});
-      cacheTx=d.transactions; renderTx(d.transactions); }
+    try{ const d=await api("transactions",{q:$("#tq").value.trim(),from:$("#tfrom").value,to:$("#tto").value,limit:PAGE,offset:txPage*PAGE});
+      cacheTx=d.transactions; renderTx(d.transactions);
+      $("#pageInfo").textContent=`第 ${txPage+1} 页 · 本页 ${d.transactions.length} 条`;
+      const pv=$("#prevPg"), nx=$("#nextPg");
+      pv.disabled=txPage<=0; pv.style.opacity=txPage<=0?.45:1;
+      nx.disabled=!d.hasMore; nx.style.opacity=d.hasMore?1:.45;
+    }
     catch(e){ $("#tbody").innerHTML=`<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`; }
   };
-  let tmr; $("#tq").addEventListener("input",()=>{clearTimeout(tmr);tmr=setTimeout(load,250);});
-  $("#tfrom").addEventListener("change",load); $("#tto").addEventListener("change",load);
+  let tmr;
+  $("#tq").addEventListener("input",()=>{clearTimeout(tmr);tmr=setTimeout(()=>{txPage=0;load();},250);});
+  $("#tfrom").addEventListener("change",()=>{txPage=0;load();});
+  $("#tto").addEventListener("change",()=>{txPage=0;load();});
+  $("#prevPg").addEventListener("click",()=>{ if(txPage>0){txPage--;load();} });
+  $("#nextPg").addEventListener("click",()=>{ txPage++; load(); });
   load();
 }
 const TYPE_LABEL={spin:"🎰 抽奖",admin_grant:"➕ 赠送",admin_deduct:"➖ 扣除"};
@@ -409,8 +450,9 @@ async function viewSettings(){
 
 /* ---------- Admins ---------- */
 async function viewAdmins(){
+  const pwBtn=el("button","btn ghost sm","🔑 改我的密码"); pwBtn.onclick=changeOwnPwdModal;
   const addBtn=el("button","btn sm","➕ 新增管理员"); addBtn.onclick=createAdminModal;
-  $("#toolbar").appendChild(addBtn);
+  $("#toolbar").append(pwBtn,addBtn);
   const panel=el("div","panel");
   panel.innerHTML=`<div class="ph"><h3>管理员账号</h3><span style="color:var(--muted);font-size:12px">每个账号独立用户名+密码登录</span></div>
     <div class="tbl-wrap"><table><thead><tr><th>ID</th><th>用户名</th><th>创建时间(UTC)</th><th>操作</th></tr></thead>
@@ -426,10 +468,13 @@ async function loadAdmins(){
       const tr=el("tr");
       tr.innerHTML=`<td class="mono" style="color:var(--faint)">${a.id}</td><td><b>${esc(a.username)}</b>${a.username===WHO?' <span class="pill type">当前</span>':''}</td>
         <td class="mono" style="color:var(--muted)">${esc(a.created_at)}</td>`;
-      const td=el("td"); const del=el("button","btn neg sm","删除");
+      const td=el("td"); const wrap=el("div","rowact");
+      const pwd=el("button","btn ghost sm","改密码");
+      pwd.onclick=()=> (a.username===WHO ? changeOwnPwdModal() : resetPwdModal(a));
+      const del=el("button","btn neg sm","删除");
       del.onclick=()=>{ if(a.username===WHO) return toast("不能删除当前登录账号","bad");
         modal("删除管理员",`确定删除 <b>${esc(a.username)}</b>？`,"",async()=>{ try{await api("admins/delete",{id:a.id});toast("已删除","ok");closeModal();loadAdmins();}catch(e){toast(e.message,"bad");} }); };
-      td.appendChild(del); tr.appendChild(td); b.appendChild(tr);
+      wrap.append(pwd,del); td.appendChild(wrap); tr.appendChild(td); b.appendChild(tr);
     });
   }catch(e){ $("#abody").innerHTML=`<tr><td colspan="4" class="empty">${esc(e.message)}</td></tr>`; }
 }
@@ -440,13 +485,27 @@ function createAdminModal(){
     async()=>{ try{ await api("admins/create",{username:$("#naUser").value.trim(),password:$("#naPass").value});
       toast("管理员已创建","ok"); closeModal(); loadAdmins(); }catch(e){ toast(e.message,"bad"); } });
 }
+function changeOwnPwdModal(){
+  modal("修改我的密码","需要先验证当前密码",
+    `<div class="field"><label>当前密码</label><input class="input" id="pwOld" type="password" placeholder="当前密码"></div>
+     <div class="field"><label>新密码（≥6位）</label><input class="input" id="pwNew" type="text" placeholder="新密码"></div>`,
+    async()=>{ try{ await api("password",{old:$("#pwOld").value,new:$("#pwNew").value});
+      toast("密码已修改，下次登录生效","ok"); closeModal(); }catch(e){ toast(e.message,"bad"); } });
+}
+function resetPwdModal(a){
+  modal(`重置「${esc(a.username)}」的密码`,"将直接设置新密码（无需对方旧密码）",
+    `<div class="field"><label>新密码（≥6位）</label><input class="input" id="pwNew2" type="text" placeholder="新密码"></div>`,
+    async()=>{ try{ await api("password",{id:a.id,new:$("#pwNew2").value});
+      toast("密码已重置","ok"); closeModal(); }catch(e){ toast(e.message,"bad"); } });
+}
 
 /* ---------- modal ---------- */
 function modal(title,desc,fields,onok){
+  $("#modalBox").style.width="";
   $("#modalBox").innerHTML=`<h3>${title}</h3><p>${desc}</p>${fields||""}
-    <div class="acts"><button class="btn ghost" id="mCancel">取消</button><button class="btn" id="mOk">确定</button></div>`;
+    <div class="acts"><button class="btn ghost" id="mCancel">${onok?"取消":"关闭"}</button>${onok?'<button class="btn" id="mOk">确定</button>':''}</div>`;
   $("#modalBg").classList.add("on");
-  $("#mCancel").onclick=closeModal; $("#mOk").onclick=onok;
+  $("#mCancel").onclick=closeModal; if(onok) $("#mOk").onclick=onok;
 }
 function closeModal(){ $("#modalBg").classList.remove("on"); }
 $("#modalBg").addEventListener("click",e=>{ if(e.target===$("#modalBg")) closeModal(); });

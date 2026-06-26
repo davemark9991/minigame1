@@ -144,6 +144,24 @@ async function ensurePlayer(db: any, user: any, settings: any): Promise<any> {
   return db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(user.id).first();
 }
 
+function todayUTC(): string { return new Date().toISOString().slice(0, 10); }
+
+// 每日免费次数自动重置：玩家当天首次访问时，把 free_spins_left 补满到 daily_spins。
+// best-effort：若 last_reset 列尚未建，跳过且不影响游戏。
+async function applyDailyReset(db: any, p: any, settings: any): Promise<any> {
+  if (!p) return p;
+  try {
+    const today = todayUTC();
+    if (p.last_reset !== today) {
+      await db.prepare(`UPDATE players SET free_spins_left = ?, last_reset = ? WHERE tg_id = ?`)
+        .bind(settings.daily_spins, today, p.tg_id).run();
+      p.free_spins_left = settings.daily_spins;
+      p.last_reset = today;
+    }
+  } catch (e) { /* last_reset 列尚未建 */ }
+  return p;
+}
+
 // --------------------------------------------------------------------------- //
 // 玩家 API
 // --------------------------------------------------------------------------- //
@@ -151,7 +169,7 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
   const user = await validateInitData(await readInitData(request), env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const settings = await getSettings(db);
-  const p: any = await ensurePlayer(db, user, settings);
+  const p: any = await applyDailyReset(db, await ensurePlayer(db, user, settings), settings);
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),
@@ -165,7 +183,7 @@ async function handleSpin(request: Request, env: any, db: any): Promise<Response
   const user = await validateInitData(await readInitData(request), env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const settings = await getSettings(db);
-  const p: any = await ensurePlayer(db, user, settings);
+  const p: any = await applyDailyReset(db, await ensurePlayer(db, user, settings), settings);
   if (!p) return jsonResp({ ok: false, error: "no_user" }, 400);
   if (p.status === "banned") return jsonResp({ ok: false, error: "banned", balance: p.balance });
   if (p.free_spins_left <= 0) return jsonResp({ ok: false, error: "no_spins", balance: p.balance });
@@ -253,12 +271,14 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/adjust":          return adminAdjust(db, body, admin);
       case "/api/admin/ban":             return adminBan(db, body);
       case "/api/admin/spins":           return adminSpins(db, body);
+      case "/api/admin/player/delete":   return adminPlayerDelete(db, body);
       case "/api/admin/transactions":    return adminTransactions(db, body);
       case "/api/admin/settings/get":    return adminSettingsGet(db);
       case "/api/admin/settings/save":   return adminSettingsSave(db, body);
       case "/api/admin/admins/list":     return adminAdminsList(db);
       case "/api/admin/admins/create":   return adminAdminsCreate(db, body);
       case "/api/admin/admins/delete":   return adminAdminsDelete(db, body, admin);
+      case "/api/admin/password":        return adminPassword(db, body, admin);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
@@ -287,11 +307,17 @@ async function adminOverview(db: any): Promise<Response> {
       `SELECT COUNT(*) c FROM transactions WHERE type='spin' AND date(created_at)=date('now')`).first();
     today = t ? t.c : 0;
   } catch (e) { today = 0; }
+  let banned = 0;
+  try {
+    const bnd: any = await db.prepare(`SELECT COUNT(*) c FROM players WHERE status='banned'`).first();
+    banned = bnd ? bnd.c : 0;
+  } catch (e) { banned = 0; }
   return jsonResp({
     ok: true,
     users: u ? u.c : 0,
     total_points: u ? u.s : 0,
-    today_spins: today
+    today_spins: today,
+    banned: banned
   });
 }
 
@@ -339,12 +365,17 @@ async function adminSpins(db: any, body: any): Promise<Response> {
   const spins = Math.max(0, parseInt(body.spins, 10) || 0);
   if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
   await db.prepare(`UPDATE players SET free_spins_left = ? WHERE tg_id = ?`).bind(spins, tg_id).run();
+  // 同步标记今天已重置，避免玩家当天再次访问时被自动重置覆盖管理员设定的次数
+  try {
+    await db.prepare(`UPDATE players SET last_reset = ? WHERE tg_id = ?`).bind(todayUTC(), tg_id).run();
+  } catch (e) { /* last_reset 列尚未建 */ }
   return jsonResp({ ok: true, spins });
 }
 
 async function adminTransactions(db: any, body: any): Promise<Response> {
   const q = (body.q || "").trim();
-  const limit = Math.min(2000, Math.max(1, parseInt(body.limit, 10) || 500));
+  const limit = Math.min(200, Math.max(1, parseInt(body.limit, 10) || 50));
+  const offset = Math.max(0, parseInt(body.offset, 10) || 0);
   const conds: string[] = [];
   const binds: any[] = [];
   if (q) {
@@ -354,11 +385,44 @@ async function adminTransactions(db: any, body: any): Promise<Response> {
   if (body.from) { conds.push(`date(t.created_at) >= date(?)`); binds.push(body.from); }
   if (body.to)   { conds.push(`date(t.created_at) <= date(?)`); binds.push(body.to); }
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  // 多取一条用于判断是否还有下一页
   const rows = await db.prepare(
     `SELECT t.id, t.tg_id, p.username, t.type, t.amount, t.balance_after, t.note, t.created_at
      FROM transactions t LEFT JOIN players p ON p.tg_id = t.tg_id
-     ${where} ORDER BY t.id DESC LIMIT ?`).bind(...binds, limit).all();
-  return jsonResp({ ok: true, transactions: rows.results || [] });
+     ${where} ORDER BY t.id DESC LIMIT ? OFFSET ?`).bind(...binds, limit + 1, offset).all();
+  const all = rows.results || [];
+  const hasMore = all.length > limit;
+  return jsonResp({ ok: true, transactions: all.slice(0, limit), hasMore, offset, limit });
+}
+
+async function adminPlayerDelete(db: any, body: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  await db.batch([
+    db.prepare(`DELETE FROM transactions WHERE tg_id = ?`).bind(tg_id),
+    db.prepare(`DELETE FROM players WHERE tg_id = ?`).bind(tg_id)
+  ]);
+  return jsonResp({ ok: true });
+}
+
+// 改密码：传 id 则重置该管理员密码（任意已登录管理员可操作）；
+// 不传 id（或 id==自己）则修改自己的密码，需校验 old 当前密码。
+async function adminPassword(db: any, body: any, admin: any): Promise<Response> {
+  const newPass = String(body.new || "");
+  if (newPass.length < 6) return jsonResp({ ok: false, error: "weak", message: "新密码至少 6 位" }, 400);
+  const targetId = body.id ? parseInt(body.id, 10) : admin.uid;
+  if (targetId === admin.uid) {
+    const row: any = await db.prepare(`SELECT password FROM admins WHERE id = ?`).bind(admin.uid).first();
+    if (!row || !(await verifyPassword(String(body.old || ""), row.password))) {
+      return jsonResp({ ok: false, error: "badold", message: "当前密码不正确" }, 400);
+    }
+  } else {
+    const exists: any = await db.prepare(`SELECT id FROM admins WHERE id = ?`).bind(targetId).first();
+    if (!exists) return jsonResp({ ok: false, error: "no_admin", message: "管理员不存在" }, 404);
+  }
+  const stored = await hashPassword(newPass);
+  await db.prepare(`UPDATE admins SET password = ? WHERE id = ?`).bind(stored, targetId).run();
+  return jsonResp({ ok: true });
 }
 
 async function adminSettingsGet(db: any): Promise<Response> {
