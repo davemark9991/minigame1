@@ -116,15 +116,36 @@ async function readInitData(request: Request): Promise<string> {
 // --------------------------------------------------------------------------- //
 // 配置 / 流水
 // --------------------------------------------------------------------------- //
+const GAME_DEFS = [
+  { key: "wheel",   label: "🎡 幸运大转盘" },
+  { key: "plinko",  label: "🔵 普林科弹珠" },
+  { key: "egg",     label: "🥚 砸金蛋" },
+  { key: "scratch", label: "🎫 刮刮乐" }
+];
+const GAME_KEYS = GAME_DEFS.map((g) => g.key);
+
 async function getSettings(db: any): Promise<any> {
-  const def: any = { award_min: 10, award_max: 200, daily_spins: 3, start_balance: 1000 };
+  const map: any = {};
   try {
     const res: any = await db.prepare(`SELECT key, value FROM settings`).all();
-    for (const r of res.results || []) {
-      if (r.key in def) def[r.key] = parseInt(r.value, 10);
-    }
+    for (const r of res.results || []) map[r.key] = r.value;
   } catch (e) { /* settings 表可能尚未建，用默认值 */ }
-  return def;
+  const num = (k: string, d: number) => { const v = parseInt(map[k], 10); return isNaN(v) ? d : v; };
+  const gMin = num("award_min", 10), gMax = num("award_max", 200);   // 全局兜底
+  const games: any = {};
+  for (const g of GAME_KEYS) {
+    games[g] = {
+      award_min: num(`${g}_award_min`, gMin),
+      award_max: num(`${g}_award_max`, gMax),
+      enabled: map[`${g}_enabled`] === undefined ? true : map[`${g}_enabled`] === "1"
+    };
+  }
+  return {
+    daily_spins: num("daily_spins", 3),
+    start_balance: num("start_balance", 1000),
+    award_min: gMin, award_max: gMax,
+    games
+  };
 }
 
 async function logTx(db: any, tg_id: number, type: string, amount: number,
@@ -166,7 +187,8 @@ async function applyDailyReset(db: any, p: any, settings: any): Promise<any> {
 // 玩家 API
 // --------------------------------------------------------------------------- //
 async function handleProfile(request: Request, env: any, db: any): Promise<Response> {
-  const user = await validateInitData(await readInitData(request), env.TELEGRAM_BOT_TOKEN);
+  const body = await readJson(request);
+  const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const settings = await getSettings(db);
   const p: any = await applyDailyReset(db, await ensurePlayer(db, user, settings), settings);
@@ -180,22 +202,27 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
 }
 
 async function handleSpin(request: Request, env: any, db: any): Promise<Response> {
-  const user = await validateInitData(await readInitData(request), env.TELEGRAM_BOT_TOKEN);
+  const body = await readJson(request);
+  const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const settings = await getSettings(db);
+  const game = GAME_KEYS.includes(body.game) ? body.game : "wheel";
+  const gconf = settings.games[game];
   const p: any = await applyDailyReset(db, await ensurePlayer(db, user, settings), settings);
   if (!p) return jsonResp({ ok: false, error: "no_user" }, 400);
   if (p.status === "banned") return jsonResp({ ok: false, error: "banned", balance: p.balance });
+  if (!gconf.enabled) return jsonResp({ ok: false, error: "disabled", balance: p.balance });
   if (p.free_spins_left <= 0) return jsonResp({ ok: false, error: "no_spins", balance: p.balance });
 
-  const lo = settings.award_min, hi = Math.max(settings.award_min, settings.award_max);
+  const lo = gconf.award_min, hi = Math.max(gconf.award_min, gconf.award_max);
   const award = Math.floor(Math.random() * (hi - lo + 1)) + lo;
   await db.prepare(
     `UPDATE players SET balance = balance + ?, free_spins_left = free_spins_left - 1
      WHERE tg_id = ? AND free_spins_left > 0`
   ).bind(award, user.id).run();
 
-  await logTx(db, user.id, "spin", award, p.balance + award);
+  const label = (GAME_DEFS.find((x) => x.key === game) || { label: game }).label;
+  await logTx(db, user.id, "spin", award, p.balance + award, label);
   return jsonResp({ ok: true, award, balance: p.balance + award, spins: p.free_spins_left - 1 });
 }
 
@@ -430,15 +457,19 @@ async function adminSettingsGet(db: any): Promise<Response> {
 }
 
 async function adminSettingsSave(db: any, body: any): Promise<Response> {
-  const keys = ["award_min", "award_max", "daily_spins", "start_balance"];
+  const upsert = (k: string, v: string) => db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(k, v);
+  const numKeys = ["daily_spins", "start_balance"];
+  for (const g of GAME_KEYS) numKeys.push(`${g}_award_min`, `${g}_award_max`);
+  const boolKeys = GAME_KEYS.map((g) => `${g}_enabled`);
   const stmts: any[] = [];
-  for (const k of keys) {
+  for (const k of numKeys) {
     if (body[k] !== undefined && body[k] !== null && body[k] !== "") {
-      const v = String(Math.max(0, parseInt(body[k], 10) || 0));
-      stmts.push(db.prepare(
-        `INSERT INTO settings (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(k, v));
+      stmts.push(upsert(k, String(Math.max(0, parseInt(body[k], 10) || 0))));
     }
+  }
+  for (const k of boolKeys) {
+    if (body[k] !== undefined) stmts.push(upsert(k, body[k] ? "1" : "0"));
   }
   if (stmts.length) await db.batch(stmts);
   return jsonResp({ ok: true, settings: await getSettings(db) });

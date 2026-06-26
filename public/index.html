@@ -325,8 +325,9 @@
   }
 
   // ---------- 后端 API（服务端权威 + HMAC 验签） ----------
-  async function api(path) {
-    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initData: initData }) });
+  async function api(path, extra) {
+    const reqBody = Object.assign({ initData: initData }, extra || {});
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(reqBody) });
     let data = {}; try { data = await r.json(); } catch (e) {}
     return { status: r.status, data: data };
   }
@@ -337,9 +338,10 @@
     } catch (e) {}
   }
   // 真正发奖：服务端决定 award；返回 {ok, award, balance, spins} 或 {ok:false, error}
+  var GAME_KEY = { "幸运大转盘": "wheel", "普林科弹珠": "plinko", "砸金蛋": "egg", "刮刮乐": "scratch" };
   async function requestAward(gameName) {
     sfx("spin");
-    const res = await api("/api/spin");
+    const res = await api("/api/spin", { game: GAME_KEY[gameName] || "wheel" });
     const d = res.data || {};
     if (d.ok) {
       state.games++; state.won += d.award;
@@ -352,7 +354,10 @@
   function popResult(award, ok) {
     $("popBig").textContent = ok ? ("+" + award + " 🪙") : "🙁";
     $("popLbl").textContent = ok ? "恭喜中奖！金币已入账"
-      : (award === "no_spins" ? "今日免费次数已用完！" : award === "auth" ? "请从 Telegram 内打开本游戏" : "请先在机器人发送 /start");
+      : (award === "no_spins" ? "今日免费次数已用完！"
+        : award === "disabled" ? "该游戏暂时关闭"
+        : award === "banned" ? "账号已被封禁"
+        : award === "auth" ? "请从 Telegram 内打开本游戏" : "请先在机器人发送 /start");
     $("pop").classList.add("show");
     if (ok) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
   }

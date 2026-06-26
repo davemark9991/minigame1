@@ -425,26 +425,45 @@ function renderTx(rows){
 }
 
 /* ---------- Settings ---------- */
+const GAME_LABELS = { wheel:"🎡 幸运大转盘", plinko:"🔵 普林科弹珠", egg:"🥚 砸金蛋", scratch:"🎫 刮刮乐" };
 async function viewSettings(){
-  let s={};
+  let s;
   try{ s=(await api("settings/get")).settings; }
   catch(e){ $("#content").innerHTML=`<div class="empty">${esc(e.message)}</div>`; return; }
-  const panel=el("div","panel");
-  panel.innerHTML=`<div class="ph"><h3>经济参数</h3><span style="color:var(--muted);font-size:12px">保存后立即对线上抽奖生效</span></div>
-    <div class="formgrid">
-      <div class="field"><label>单次抽奖最低奖励（分）</label><input class="input" id="s_award_min" type="number" min="0" value="${s.award_min}"></div>
-      <div class="field"><label>单次抽奖最高奖励（分）</label><input class="input" id="s_award_max" type="number" min="0" value="${s.award_max}"></div>
-      <div class="field"><label>每日免费抽奖次数（新玩家）</label><input class="input" id="s_daily_spins" type="number" min="0" value="${s.daily_spins}"></div>
-      <div class="field"><label>新玩家初始积分</label><input class="input" id="s_start_balance" type="number" min="0" value="${s.start_balance}"></div>
-    </div>
-    <div class="settings-foot"><button class="btn" id="saveSet">💾 保存设置</button>
-      <span style="color:var(--faint);font-size:12px">奖励区间用于每次 /api/spin；初始积分/次数用于新玩家注册。</span></div>`;
-  $("#content").innerHTML=""; $("#content").appendChild(panel);
+  const g=s.games||{};
+  const gameCards = Object.keys(GAME_LABELS).map(k=>{
+    const c=g[k]||{award_min:10,award_max:200,enabled:true};
+    return `<div class="panel"><div class="ph"><h3>${GAME_LABELS[k]}</h3>
+      <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;cursor:pointer">
+        <input type="checkbox" id="g_${k}_enabled" ${c.enabled?'checked':''} style="width:16px;height:16px;accent-color:var(--accent)"> 启用该游戏</label></div>
+      <div class="formgrid">
+        <div class="field"><label>最低奖励（分）</label><input class="input" id="g_${k}_min" type="number" min="0" value="${c.award_min}"></div>
+        <div class="field"><label>最高奖励（分）</label><input class="input" id="g_${k}_max" type="number" min="0" value="${c.award_max}"></div>
+      </div></div>`;
+  }).join("");
+  $("#content").innerHTML=`
+    <div class="panel"><div class="ph"><h3>全局参数</h3><span style="color:var(--muted);font-size:12px">所有游戏共用</span></div>
+      <div class="formgrid">
+        <div class="field"><label>每日免费抽奖次数</label><input class="input" id="s_daily_spins" type="number" min="0" value="${s.daily_spins}"></div>
+        <div class="field"><label>新玩家初始积分</label><input class="input" id="s_start_balance" type="number" min="0" value="${s.start_balance}"></div>
+      </div></div>
+    ${gameCards}
+    <div style="display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap">
+      <button class="btn" id="saveSet">💾 保存全部设置</button>
+      <span style="color:var(--faint);font-size:12px">每个游戏可设独立奖励区间与开关；关闭的游戏玩家点了会提示"暂时关闭"。保存后立即生效。</span>
+    </div>`;
   $("#saveSet").onclick=async()=>{
-    const body={award_min:$("#s_award_min").value,award_max:$("#s_award_max").value,
-      daily_spins:$("#s_daily_spins").value,start_balance:$("#s_start_balance").value};
-    if(parseInt(body.award_min)>parseInt(body.award_max)) return toast("最低奖励不能大于最高奖励","bad");
-    try{ await api("settings/save",body); toast("设置已保存并生效","ok"); }catch(e){ toast(e.message,"bad"); }
+    const body={ daily_spins:$("#s_daily_spins").value, start_balance:$("#s_start_balance").value };
+    let bad=false;
+    Object.keys(GAME_LABELS).forEach(k=>{
+      const mn=parseInt($("#g_"+k+"_min").value,10), mx=parseInt($("#g_"+k+"_max").value,10);
+      if(mn>mx) bad=true;
+      body[k+"_award_min"]=$("#g_"+k+"_min").value;
+      body[k+"_award_max"]=$("#g_"+k+"_max").value;
+      body[k+"_enabled"]=$("#g_"+k+"_enabled").checked;
+    });
+    if(bad) return toast("某个游戏的最低奖励大于最高奖励","bad");
+    try{ await api("settings/save",body); toast("全部游戏设置已保存生效","ok"); }catch(e){ toast(e.message,"bad"); }
   };
 }
 
