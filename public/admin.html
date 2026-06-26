@@ -67,6 +67,8 @@
   .nav:hover{background:var(--panel);color:var(--text)}
   .nav.active{background:var(--accentSoft);color:#fff}
   .nav.active .ic{filter:drop-shadow(0 0 6px var(--accent))}
+  .navbadge{display:inline-block;min-width:18px;text-align:center;background:var(--neg);color:#fff;font-size:11px;font-weight:700;border-radius:9px;padding:1px 6px;line-height:1.4}
+  .chatitem:hover{background:var(--panel)!important}
   .side .spacer{flex:1}
   .side .who{padding:10px 12px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;margin-top:8px}
   .side .who b{color:var(--text);display:block;font-size:13px;margin-bottom:2px}
@@ -169,6 +171,7 @@
     <a class="nav active" data-view="overview"><span class="ic">📊</span> 总览</a>
     <a class="nav" data-view="users"><span class="ic">👥</span> 玩家管理</a>
     <a class="nav" data-view="tx"><span class="ic">🧾</span> 交易流水</a>
+    <a class="nav" data-view="chat"><span class="ic">💬</span> 客服聊天 <span id="navUnread" class="navbadge" style="display:none"></span></a>
     <a class="nav" data-view="settings"><span class="ic">🎛️</span> 游戏设置</a>
     <a class="nav" data-view="admins"><span class="ic">🔐</span> 管理员</a>
     <div class="spacer"></div>
@@ -249,16 +252,18 @@ function enterApp(){
 
 /* ---------- nav ---------- */
 const TITLES = {overview:["总览","线上数据 · 实时"],users:["玩家管理","查看 / 调整线上真实玩家"],
-  tx:["交易流水","所有抽奖与积分变动记录"],settings:["游戏设置","改动实时影响线上抽奖"],admins:["管理员","账号增删（各自独立登录）"]};
+  tx:["交易流水","所有下注与积分变动记录"],chat:["客服聊天","玩家消息 · 实时回复"],
+  settings:["游戏设置","下注额 + 奖品表，改动实时生效"],admins:["管理员","账号增删（各自独立登录）"]};
 document.querySelectorAll(".nav[data-view]").forEach(n=>n.addEventListener("click",()=>go(n.dataset.view)));
 $("#menuBtn").addEventListener("click",()=>$("#side").classList.toggle("show"));
 
 function go(view){
+  clearChatTimer();
   document.querySelectorAll(".nav[data-view]").forEach(n=>n.classList.toggle("active",n.dataset.view===view));
   $("#pageTitle").textContent=TITLES[view][0]; $("#pageSub").textContent=TITLES[view][1];
   $("#toolbar").innerHTML=""; $("#content").innerHTML='<div class="empty">加载中…</div>';
   $("#side").classList.remove("show");
-  ({overview:viewOverview,users:viewUsers,tx:viewTx,settings:viewSettings,admins:viewAdmins}[view])();
+  ({overview:viewOverview,users:viewUsers,tx:viewTx,chat:viewChat,settings:viewSettings,admins:viewAdmins}[view])();
 }
 
 /* ---------- Overview ---------- */
@@ -291,37 +296,35 @@ async function viewUsers(){
   panel.innerHTML = `<div class="ph"><h3>玩家列表</h3>
     <div class="filters"><input class="input search" id="uq" placeholder="🔎 搜索 昵称 / Telegram ID"></div></div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>Telegram ID</th><th>昵称</th><th>积分</th><th>剩余次数</th><th>状态</th><th>操作</th>
-    </tr></thead><tbody id="ubody"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody></table></div>`;
+      <th>Telegram ID</th><th>昵称</th><th>积分</th><th>状态</th><th>操作</th>
+    </tr></thead><tbody id="ubody"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody></table></div>`;
   $("#content").innerHTML=""; $("#content").appendChild(panel);
 
   const load = async q=>{
     try{ const d = await api("players",{q}); cachePlayers=d.players; renderUsers(d.players); }
-    catch(e){ $("#ubody").innerHTML=`<tr><td colspan="6" class="empty">${esc(e.message)}</td></tr>`; }
+    catch(e){ $("#ubody").innerHTML=`<tr><td colspan="5" class="empty">${esc(e.message)}</td></tr>`; }
   };
   let tmr; $("#uq").addEventListener("input",e=>{clearTimeout(tmr);tmr=setTimeout(()=>load(e.target.value.trim()),250);});
   load("");
 }
 function renderUsers(rows){
   const b=$("#ubody"); b.innerHTML="";
-  if(!rows.length){ b.innerHTML='<tr><td colspan="6" class="empty">暂无玩家</td></tr>'; return; }
+  if(!rows.length){ b.innerHTML='<tr><td colspan="5" class="empty">暂无玩家</td></tr>'; return; }
   rows.forEach(p=>{
     const tr=el("tr");
     tr.innerHTML = `<td class="mono">${p.tg_id}</td><td>${esc(p.username)||"<span style='color:var(--faint)'>—</span>"}</td>
-      <td class="mono">${fmt(p.balance)}</td><td class="mono">${fmt(p.free_spins_left)}</td>
+      <td class="mono">${fmt(p.balance)}</td>
       <td><span class="pill ${p.status==='banned'?'banned':'active'}">${p.status==='banned'?'已封禁':'正常'}</span></td>`;
     const act=el("td"); const wrap=el("div","rowact");
     const bg=el("button","btn pos sm","➕分"), bd=el("button","btn neg sm","➖分"),
-          bs=el("button","btn ghost sm","次数"),
           bb=el("button","btn "+(p.status==='banned'?"warn":"ghost")+" sm",p.status==='banned'?"解封":"封禁"),
           bh=el("button","btn ghost sm","明细"),
           bx=el("button","btn neg sm","🗑");
     bg.onclick=()=>adjustModal(p,1); bd.onclick=()=>adjustModal(p,-1);
-    bs.onclick=()=>spinsModal(p);
     bb.onclick=()=>banPlayer(p);
     bh.onclick=()=>playerHistory(p);
     bx.onclick=()=>deletePlayer(p);
-    wrap.append(bg,bd,bs,bb,bh,bx); act.appendChild(wrap); tr.appendChild(act); b.appendChild(tr);
+    wrap.append(bg,bd,bb,bh,bx); act.appendChild(wrap); tr.appendChild(act); b.appendChild(tr);
   });
 }
 function adjustModal(p,sign){
@@ -333,12 +336,6 @@ function adjustModal(p,sign){
       await api("adjust",{tg_id:p.tg_id,amount:sign*amt,note:$("#mNote").value.trim()});
       toast("已"+(sign>0?"赠送":"扣除")+" "+amt+" 分","ok"); closeModal(); refreshUsers();
     });
-}
-function spinsModal(p){
-  modal("设置剩余抽奖次数",`玩家 <b>${esc(p.username)||p.tg_id}</b>（当前 ${fmt(p.free_spins_left)} 次）`,
-    `<div class="field"><label>次数</label><input class="input" id="mSpin" type="number" min="0" value="${p.free_spins_left}"></div>`,
-    async()=>{ await api("spins",{tg_id:p.tg_id,spins:parseInt($("#mSpin").value,10)||0});
-      toast("次数已更新","ok"); closeModal(); refreshUsers(); });
 }
 async function banPlayer(p){
   const to = p.status==='banned'?"active":"banned";
@@ -426,45 +423,99 @@ function renderTx(rows){
 
 /* ---------- Settings ---------- */
 const GAME_LABELS = { wheel:"🎡 幸运大转盘", plinko:"🔵 普林科弹珠", egg:"🥚 砸金蛋", scratch:"🎫 刮刮乐" };
+let setData = null;
 async function viewSettings(){
-  let s;
-  try{ s=(await api("settings/get")).settings; }
+  try{ setData=(await api("settings/get")).settings; }
   catch(e){ $("#content").innerHTML=`<div class="empty">${esc(e.message)}</div>`; return; }
-  const g=s.games||{};
-  const gameCards = Object.keys(GAME_LABELS).map(k=>{
-    const c=g[k]||{award_min:10,award_max:200,enabled:true};
-    return `<div class="panel"><div class="ph"><h3>${GAME_LABELS[k]}</h3>
-      <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;cursor:pointer">
-        <input type="checkbox" id="g_${k}_enabled" ${c.enabled?'checked':''} style="width:16px;height:16px;accent-color:var(--accent)"> 启用该游戏</label></div>
-      <div class="formgrid">
-        <div class="field"><label>最低奖励（分）</label><input class="input" id="g_${k}_min" type="number" min="0" value="${c.award_min}"></div>
-        <div class="field"><label>最高奖励（分）</label><input class="input" id="g_${k}_max" type="number" min="0" value="${c.award_max}"></div>
-      </div></div>`;
+  if(!setData.games) setData.games={};
+  Object.keys(GAME_LABELS).forEach(k=>{ if(!setData.games[k]) setData.games[k]={bet:50,enabled:true,prizes:[]}; if(!Array.isArray(setData.games[k].prizes)) setData.games[k].prizes=[]; });
+  renderSettings();
+}
+function renderSettings(){
+  const s=setData;
+  const gameCards=Object.keys(GAME_LABELS).map(k=>{
+    const c=s.games[k];
+    return `<div class="panel">
+      <div class="ph"><h3>${GAME_LABELS[k]}</h3>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;cursor:pointer">
+          <input type="checkbox" class="g-enabled" data-g="${k}" ${c.enabled?'checked':''} style="width:16px;height:16px;accent-color:var(--accent)"> 启用</label></div>
+      <div style="padding:14px 16px 6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label style="color:var(--muted);font-size:12.5px">每局下注额（分）</label>
+        <input class="input g-bet" data-g="${k}" type="number" min="0" value="${c.bet}" style="width:110px;padding:7px 10px">
+        <span class="setEV" data-g="${k}" style="font-size:12px;margin-left:auto"></span>
+      </div>
+      <div class="tbl-wrap" style="max-height:none"><table><thead><tr>
+        <th style="width:24%">奖品名</th><th style="width:18%">类型</th><th>分值 / 区间</th><th style="width:13%">权重</th><th style="width:54px"></th>
+      </tr></thead><tbody class="prizeBody" data-g="${k}"></tbody></table></div>
+      <div style="padding:10px 16px"><button class="btn ghost sm addPrize" data-g="${k}">➕ 添加奖品</button></div>
+    </div>`;
   }).join("");
   $("#content").innerHTML=`
-    <div class="panel"><div class="ph"><h3>全局参数</h3><span style="color:var(--muted);font-size:12px">所有游戏共用</span></div>
-      <div class="formgrid">
-        <div class="field"><label>每日免费抽奖次数</label><input class="input" id="s_daily_spins" type="number" min="0" value="${s.daily_spins}"></div>
-        <div class="field"><label>新玩家初始积分</label><input class="input" id="s_start_balance" type="number" min="0" value="${s.start_balance}"></div>
-      </div></div>
+    <div class="panel"><div class="ph"><h3>全局</h3></div>
+      <div class="formgrid"><div class="field"><label>新玩家初始积分（建议 0，靠后台加分）</label>
+        <input class="input" id="s_start_balance" type="number" min="0" value="${s.start_balance}"></div></div></div>
     ${gameCards}
-    <div style="display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap">
+    <div style="display:flex;gap:10px;align-items:center;margin:16px 0;flex-wrap:wrap">
       <button class="btn" id="saveSet">💾 保存全部设置</button>
-      <span style="color:var(--faint);font-size:12px">每个游戏可设独立奖励区间与开关；关闭的游戏玩家点了会提示"暂时关闭"。保存后立即生效。</span>
+      <span style="color:var(--faint);font-size:12px">每游戏可设下注额 + 多档奖品（固定分或区间随机），权重决定中奖概率。EV=期望回报，低于下注额即庄家盈利。</span>
     </div>`;
-  $("#saveSet").onclick=async()=>{
-    const body={ daily_spins:$("#s_daily_spins").value, start_balance:$("#s_start_balance").value };
-    let bad=false;
-    Object.keys(GAME_LABELS).forEach(k=>{
-      const mn=parseInt($("#g_"+k+"_min").value,10), mx=parseInt($("#g_"+k+"_max").value,10);
-      if(mn>mx) bad=true;
-      body[k+"_award_min"]=$("#g_"+k+"_min").value;
-      body[k+"_award_max"]=$("#g_"+k+"_max").value;
-      body[k+"_enabled"]=$("#g_"+k+"_enabled").checked;
-    });
-    if(bad) return toast("某个游戏的最低奖励大于最高奖励","bad");
-    try{ await api("settings/save",body); toast("全部游戏设置已保存生效","ok"); }catch(e){ toast(e.message,"bad"); }
-  };
+  Object.keys(GAME_LABELS).forEach(k=>renderPrizeRows(k));
+  document.querySelectorAll(".addPrize").forEach(b=>b.onclick=()=>{ setData.games[b.dataset.g].prizes.push({type:"fixed",value:0,weight:10,label:"新奖品"}); renderPrizeRows(b.dataset.g); });
+  document.querySelectorAll(".g-bet").forEach(inp=>inp.oninput=()=>{ setData.games[inp.dataset.g].bet=inp.value; updateEV(inp.dataset.g); });
+  document.querySelectorAll(".g-enabled").forEach(c=>c.onchange=()=>{ setData.games[c.dataset.g].enabled=c.checked; });
+  $("#saveSet").onclick=saveSettings;
+}
+function renderPrizeRows(k){
+  const body=document.querySelector('.prizeBody[data-g="'+k+'"]'); if(!body) return;
+  const prizes=setData.games[k].prizes;
+  if(!prizes.length){ body.innerHTML='<tr><td colspan="5" class="empty" style="padding:18px">还没有奖品，点下方"添加奖品"</td></tr>'; updateEV(k); return; }
+  body.innerHTML="";
+  prizes.forEach((p,i)=>{
+    const tr=document.createElement("tr");
+    const valCell = p.type==="range"
+      ? `<input class="input pr" data-g="${k}" data-i="${i}" data-f="min" type="number" min="0" value="${p.min!=null?p.min:0}" style="width:72px;padding:6px 8px"> –
+         <input class="input pr" data-g="${k}" data-i="${i}" data-f="max" type="number" min="0" value="${p.max!=null?p.max:0}" style="width:72px;padding:6px 8px">`
+      : `<input class="input pr" data-g="${k}" data-i="${i}" data-f="value" type="number" min="0" value="${p.value!=null?p.value:0}" style="width:110px;padding:6px 8px">`;
+    tr.innerHTML=`
+      <td><input class="input pr" data-g="${k}" data-i="${i}" data-f="label" value="${esc(p.label||'')}" style="padding:6px 8px"></td>
+      <td><select class="input pr" data-g="${k}" data-i="${i}" data-f="type" style="padding:6px 8px">
+        <option value="fixed" ${p.type!=="range"?"selected":""}>固定分</option>
+        <option value="range" ${p.type==="range"?"selected":""}>区间随机</option></select></td>
+      <td>${valCell}</td>
+      <td><input class="input pr" data-g="${k}" data-i="${i}" data-f="weight" type="number" min="0" value="${p.weight!=null?p.weight:0}" style="width:78px;padding:6px 8px"></td>
+      <td><button class="btn neg sm delPrize" data-g="${k}" data-i="${i}">删</button></td>`;
+    body.appendChild(tr);
+  });
+  body.querySelectorAll(".pr").forEach(inp=>{
+    const f=inp.dataset.f, i=+inp.dataset.i;
+    inp.oninput=inp.onchange=()=>{
+      const p=setData.games[k].prizes[i];
+      if(f==="type"){ p.type=inp.value; renderPrizeRows(k); return; }
+      if(f==="label"){ p.label=inp.value; } else { p[f]=inp.value; }
+      updateEV(k);
+    };
+  });
+  body.querySelectorAll(".delPrize").forEach(b=>b.onclick=()=>{ setData.games[k].prizes.splice(+b.dataset.i,1); renderPrizeRows(k); });
+  updateEV(k);
+}
+function updateEV(k){
+  const g=setData.games[k]; const bet=parseInt(g.bet,10)||0;
+  let tw=0, ev=0;
+  g.prizes.forEach(p=>{ tw+=parseInt(p.weight,10)||0; });
+  if(tw>0) g.prizes.forEach(p=>{ const w=(parseInt(p.weight,10)||0)/tw;
+    const val=p.type==="range" ? ((parseInt(p.min,10)||0)+(parseInt(p.max,10)||0))/2 : (parseInt(p.value,10)||0);
+    ev += w*val; });
+  const span=document.querySelector('.setEV[data-g="'+k+'"]');
+  if(span){ span.textContent = tw>0 ? `EV ${ev.toFixed(1)} 分 / 下注 ${bet} · 庄家净 ${(bet-ev).toFixed(1)}` : "请添加奖品（权重>0）";
+    span.style.color = (tw>0 && ev<=bet) ? "var(--pos)" : "var(--warn)"; }
+}
+async function saveSettings(){
+  const body={ start_balance:$("#s_start_balance").value, games:{} };
+  Object.keys(GAME_LABELS).forEach(k=>{ const g=setData.games[k]; body.games[k]={bet:g.bet,enabled:g.enabled,prizes:g.prizes}; });
+  try{ const d=await api("settings/save",body); setData=d.settings;
+    Object.keys(GAME_LABELS).forEach(k=>{ if(!setData.games[k]) setData.games[k]={bet:50,enabled:true,prizes:[]}; });
+    toast("全部设置已保存生效","ok"); renderSettings(); }
+  catch(e){ toast(e.message,"bad"); }
 }
 
 /* ---------- Admins ---------- */
@@ -516,6 +567,82 @@ function resetPwdModal(a){
     `<div class="field"><label>新密码（≥6位）</label><input class="input" id="pwNew2" type="text" placeholder="新密码"></div>`,
     async()=>{ try{ await api("password",{id:a.id,new:$("#pwNew2").value});
       toast("密码已重置","ok"); closeModal(); }catch(e){ toast(e.message,"bad"); } });
+}
+
+/* ---------- 客服聊天 ---------- */
+let chatState = { tgid:null, timer:null };
+function clearChatTimer(){ if(chatState.timer){ clearInterval(chatState.timer); chatState.timer=null; } }
+function updateNavUnread(n){ const b=$("#navUnread"); if(b){ b.textContent=n>0?n:''; b.style.display=n>0?'inline-block':'none'; } }
+async function viewChat(){
+  chatState.tgid=null;
+  $("#content").innerHTML=`
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;height:calc(100vh - 150px);min-height:420px">
+      <div class="panel" style="display:flex;flex-direction:column;overflow:hidden">
+        <div class="ph"><h3>会话</h3><button class="btn ghost sm" id="chatRefresh">刷新</button></div>
+        <div id="chatList" style="overflow:auto;flex:1"><div class="empty">加载中…</div></div>
+      </div>
+      <div class="panel" style="display:flex;flex-direction:column;overflow:hidden">
+        <div class="ph"><h3 id="chatTitle">← 选择一个会话</h3></div>
+        <div id="chatThread" style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
+          <div class="empty">玩家在 Telegram 里发给机器人的消息会出现在左侧，点开即可回复。</div></div>
+        <div id="chatComposer" style="display:none;border-top:1px solid var(--border);padding:12px;gap:8px;align-items:center">
+          <input class="input" id="chatInput" placeholder="输入回复…（Enter 发送）" style="flex:1">
+          <button class="btn" id="chatSend">发送</button>
+        </div>
+      </div>
+    </div>`;
+  $("#chatRefresh").onclick=loadChatList;
+  $("#chatSend").onclick=sendChat;
+  await loadChatList();
+  chatState.timer=setInterval(()=>{ loadChatList(); if(chatState.tgid) loadThread(); }, 4000);
+}
+async function loadChatList(){
+  try{
+    const d=await api("chat/list"); const box=$("#chatList"); if(!box) return;
+    if(!d.chats.length){ box.innerHTML='<div class="empty">暂无玩家消息</div>'; updateNavUnread(0); return; }
+    let total=0;
+    box.innerHTML=d.chats.map(c=>{
+      const u=parseInt(c.unread||0,10); total+=u;
+      const active=String(c.tg_id)===String(chatState.tgid)?'background:var(--accentSoft)':'';
+      return `<div class="chatitem" data-tg="${c.tg_id}" data-name="${esc(c.username)||c.tg_id}" style="padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;${active}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <b style="font-size:13px">${esc(c.username)||c.tg_id}</b>
+          ${u>0?`<span class="navbadge">${u}</span>`:''}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.last_text)||''}</div>
+      </div>`;
+    }).join("");
+    box.querySelectorAll(".chatitem").forEach(it=>it.onclick=()=>openThread(it.dataset.tg,it.dataset.name));
+    updateNavUnread(total);
+  }catch(e){ const box=$("#chatList"); if(box) box.innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
+}
+async function openThread(tgid,name){
+  chatState.tgid=String(tgid);
+  $("#chatTitle").textContent=`${name} · ID ${tgid}`;
+  $("#chatComposer").style.display="flex";
+  $("#chatInput").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); sendChat(); } };
+  await loadThread(); loadChatList();
+}
+async function loadThread(){
+  if(!chatState.tgid) return;
+  try{
+    const d=await api("chat/thread",{tg_id:chatState.tgid}); const box=$("#chatThread"); if(!box) return;
+    if(!d.messages.length){ box.innerHTML='<div class="empty">还没有消息</div>'; return; }
+    box.innerHTML=d.messages.map(m=>{
+      const out=m.direction==='out';
+      return `<div style="align-self:${out?'flex-end':'flex-start'};max-width:75%">
+        <div style="background:${out?'var(--accent)':'var(--panel2)'};color:${out?'#fff':'var(--text)'};border:1px solid ${out?'transparent':'var(--border2)'};padding:8px 12px;border-radius:12px;font-size:13px;white-space:pre-wrap;word-break:break-word">${esc(m.text)}</div>
+        <div style="color:var(--faint);font-size:10.5px;margin-top:3px;text-align:${out?'right':'left'}">${out?'我':'玩家'} · ${esc(m.created_at)}</div>
+      </div>`;
+    }).join("");
+    box.scrollTop=box.scrollHeight;
+  }catch(e){}
+}
+async function sendChat(){
+  const inp=$("#chatInput"); if(!inp) return; const text=inp.value.trim();
+  if(!text||!chatState.tgid) return;
+  inp.value="";
+  try{ await api("chat/send",{tg_id:chatState.tgid,text}); await loadThread(); }
+  catch(e){ toast(e.message,"bad"); inp.value=text; }
 }
 
 /* ---------- modal ---------- */

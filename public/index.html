@@ -165,7 +165,7 @@
         <div class="card" data-game="egg"><div class="emoji">🥚</div><div class="name">砸金蛋</div><div class="desc">大锤砸下 · 碎屑粒子</div><div class="play">GO ▶</div></div>
         <div class="card" data-game="scratch"><div class="emoji">🎫</div><div class="name">刮刮乐</div><div class="desc">手指涂抹 · 自动揭晓</div><div class="play">GO ▶</div></div>
       </div>
-      <p class="tip" style="margin-top:16px">🎁 每日免费畅玩 <span id="lobbySpins">--</span> 次 · 中奖金币实时入账</p>
+      <p class="tip" style="margin-top:16px">💰 当前积分 <span id="lobbyBal">0</span> · 下注游戏赢积分，积分不足请联系客服充值</p>
     </section>
 
     <!-- ===== 个人中心 ===== -->
@@ -298,8 +298,8 @@
     }
     requestAnimationFrame(step);
   }
-  function setBalance(v) { state.balance = v; rollNumber($("coinVal"), v); $("stBal").textContent = Number(v).toLocaleString(); }
-  function setSpins(v) { state.spins = v; $("lobbySpins").textContent = v; }
+  function setBalance(v) { state.balance = v; rollNumber($("coinVal"), v); $("stBal").textContent = Number(v).toLocaleString(); var lb = $("lobbyBal"); if (lb) lb.textContent = Number(v).toLocaleString(); }
+  function setSpins(v) { /* 下注消耗模式：无免费次数，保留空函数避免改动各游戏调用 */ }
 
   function renderUser() {
     const name = tgUser ? (tgUser.first_name || tgUser.username || "玩家") : "玩家";
@@ -352,14 +352,21 @@
     return { ok: false, error: d.error || "fail" };
   }
   function popResult(award, ok) {
-    $("popBig").textContent = ok ? ("+" + award + " 🪙") : "🙁";
-    $("popLbl").textContent = ok ? "恭喜中奖！金币已入账"
-      : (award === "no_spins" ? "今日免费次数已用完！"
+    if (ok) {
+      var win = Number(award) > 0;
+      $("popBig").textContent = win ? ("+" + award + " 🪙") : "🙁";
+      $("popLbl").textContent = win ? "恭喜中奖！积分已入账" : "谢谢参与，未中奖";
+      if (win) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
+    } else {
+      $("popBig").textContent = "🙁";
+      $("popLbl").textContent = award === "insufficient" ? "积分不足，请联系客服充值"
         : award === "disabled" ? "该游戏暂时关闭"
         : award === "banned" ? "账号已被封禁"
-        : award === "auth" ? "请从 Telegram 内打开本游戏" : "请先在机器人发送 /start");
+        : award === "no_spins" ? "次数已用完"
+        : award === "auth" ? "请从 Telegram 内打开本游戏" : "请先在机器人发送 /start";
+      sfx("lose"); haptic("lose");
+    }
     $("pop").classList.add("show");
-    if (ok) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
   }
 
   // ---------- 场景路由（SPA） ----------

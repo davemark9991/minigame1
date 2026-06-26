@@ -34,11 +34,22 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
-INSERT OR IGNORE INTO settings (key, value) VALUES
-  ('award_min',     '10'),
-  ('award_max',     '200'),
-  ('daily_spins',   '3'),
-  ('start_balance', '1000');
+-- 下注消耗模式：新玩家初始 0 分，靠后台加分。每游戏的下注额/奖品表由代码默认值兜底，
+-- 后台「游戏设置」里可改（存为 <game>_bet / <game>_enabled / <game>_prizes(JSON)）。
+INSERT OR IGNORE INTO settings (key, value) VALUES ('start_balance', '0');
+
+-- 客服聊天消息（玩家发给 bot 的文字 <-> 管理员回复）
+CREATE TABLE IF NOT EXISTS messages (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tg_id      INTEGER NOT NULL,
+  username   TEXT,
+  direction  TEXT NOT NULL,                    -- in=玩家发来 / out=管理员回复
+  text       TEXT NOT NULL,
+  seen       INTEGER NOT NULL DEFAULT 0,        -- 进站消息管理员是否已读
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_msg_tg   ON messages(tg_id);
+CREATE INDEX IF NOT EXISTS idx_msg_seen ON messages(direction, seen);
 
 -- 管理员表（多账号，各自独立用户名 + 密码）------------------------------
 -- password 格式：pbkdf2$sha256$<iterations>$<saltHex>$<hashHex>

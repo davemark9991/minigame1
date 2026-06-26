@@ -117,12 +117,61 @@ async function readInitData(request: Request): Promise<string> {
 // 配置 / 流水
 // --------------------------------------------------------------------------- //
 const GAME_DEFS = [
-  { key: "wheel",   label: "🎡 幸运大转盘" },
-  { key: "plinko",  label: "🔵 普林科弹珠" },
-  { key: "egg",     label: "🥚 砸金蛋" },
-  { key: "scratch", label: "🎫 刮刮乐" }
+  { key: "wheel",   label: "🎡 幸运大转盘", bet: 50 },
+  { key: "plinko",  label: "🔵 普林科弹珠", bet: 50 },
+  { key: "egg",     label: "🥚 砸金蛋",     bet: 100 },
+  { key: "scratch", label: "🎫 刮刮乐",     bet: 50 }
 ];
 const GAME_KEYS = GAME_DEFS.map((g) => g.key);
+
+// 默认奖品表（后台可改）。type: fixed=固定分 / range=区间随机分；weight=中奖权重。
+function defaultPrizes(): any[] {
+  return [
+    { type: "fixed", value: 0,   weight: 35, label: "谢谢参与" },
+    { type: "fixed", value: 30,  weight: 25, label: "小奖" },
+    { type: "fixed", value: 60,  weight: 18, label: "回本" },
+    { type: "range", min: 80,  max: 150, weight: 13, label: "中奖" },
+    { type: "range", min: 180, max: 350, weight: 7,  label: "大奖" },
+    { type: "fixed", value: 600, weight: 2,  label: "超级大奖" }
+  ];
+}
+
+function sanitizePrizes(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  const out: any[] = [];
+  for (const p of raw) {
+    const weight = Math.max(0, parseInt(p.weight, 10) || 0);
+    if (weight <= 0) continue;
+    const label = String(p.label || "").slice(0, 20);
+    if (p.type === "range") {
+      const min = Math.max(0, parseInt(p.min, 10) || 0);
+      const max = Math.max(min, parseInt(p.max, 10) || min);
+      out.push({ type: "range", min, max, weight, label });
+    } else {
+      const value = Math.max(0, parseInt(p.value, 10) || 0);
+      out.push({ type: "fixed", value, weight, label });
+    }
+  }
+  return out;
+}
+
+// 按权重随机抽一个奖品，返回 {award 分值, label 奖品名}
+function pickPrize(prizes: any[]): { award: number; label: string } {
+  const valid = (prizes && prizes.length) ? prizes : defaultPrizes();
+  const total = valid.reduce((s, p) => s + (p.weight || 0), 0);
+  if (total <= 0) return { award: 0, label: "" };
+  let roll = Math.random() * total;
+  for (const p of valid) {
+    roll -= p.weight;
+    if (roll <= 0) {
+      const award = p.type === "range"
+        ? Math.floor(Math.random() * (p.max - p.min + 1)) + p.min : p.value;
+      return { award, label: p.label || "" };
+    }
+  }
+  const last = valid[valid.length - 1];
+  return { award: last.type === "range" ? last.min : last.value, label: last.label || "" };
+}
 
 async function getSettings(db: any): Promise<any> {
   const map: any = {};
@@ -131,21 +180,19 @@ async function getSettings(db: any): Promise<any> {
     for (const r of res.results || []) map[r.key] = r.value;
   } catch (e) { /* settings 表可能尚未建，用默认值 */ }
   const num = (k: string, d: number) => { const v = parseInt(map[k], 10); return isNaN(v) ? d : v; };
-  const gMin = num("award_min", 10), gMax = num("award_max", 200);   // 全局兜底
   const games: any = {};
-  for (const g of GAME_KEYS) {
+  for (const def of GAME_DEFS) {
+    const g = def.key;
+    let prizes: any[] = [];
+    try { prizes = sanitizePrizes(JSON.parse(map[`${g}_prizes`] || "null")); } catch (e) { prizes = []; }
+    if (!prizes.length) prizes = defaultPrizes();
     games[g] = {
-      award_min: num(`${g}_award_min`, gMin),
-      award_max: num(`${g}_award_max`, gMax),
-      enabled: map[`${g}_enabled`] === undefined ? true : map[`${g}_enabled`] === "1"
+      bet: num(`${g}_bet`, def.bet),
+      enabled: map[`${g}_enabled`] === undefined ? true : map[`${g}_enabled`] === "1",
+      prizes
     };
   }
-  return {
-    daily_spins: num("daily_spins", 3),
-    start_balance: num("start_balance", 1000),
-    award_min: gMin, award_max: gMax,
-    games
-  };
+  return { start_balance: num("start_balance", 0), games };
 }
 
 async function logTx(db: any, tg_id: number, type: string, amount: number,
@@ -160,27 +207,9 @@ async function logTx(db: any, tg_id: number, type: string, amount: number,
 async function ensurePlayer(db: any, user: any, settings: any): Promise<any> {
   const username = user.username || user.first_name || "神秘玩家";
   await db.prepare(
-    `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, ?)`
-  ).bind(user.id, username, settings.start_balance, settings.daily_spins).run();
+    `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, 0)`
+  ).bind(user.id, username, settings.start_balance).run();
   return db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(user.id).first();
-}
-
-function todayUTC(): string { return new Date().toISOString().slice(0, 10); }
-
-// 每日免费次数自动重置：玩家当天首次访问时，把 free_spins_left 补满到 daily_spins。
-// best-effort：若 last_reset 列尚未建，跳过且不影响游戏。
-async function applyDailyReset(db: any, p: any, settings: any): Promise<any> {
-  if (!p) return p;
-  try {
-    const today = todayUTC();
-    if (p.last_reset !== today) {
-      await db.prepare(`UPDATE players SET free_spins_left = ?, last_reset = ? WHERE tg_id = ?`)
-        .bind(settings.daily_spins, today, p.tg_id).run();
-      p.free_spins_left = settings.daily_spins;
-      p.last_reset = today;
-    }
-  } catch (e) { /* last_reset 列尚未建 */ }
-  return p;
 }
 
 // --------------------------------------------------------------------------- //
@@ -191,12 +220,12 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
   const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const settings = await getSettings(db);
-  const p: any = await applyDailyReset(db, await ensurePlayer(db, user, settings), settings);
+  const p: any = await ensurePlayer(db, user, settings);
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),
     balance: p ? p.balance : 0,
-    spins: p ? p.free_spins_left : 0,
+    spins: 0,
     banned: p ? (p.status === "banned") : false
   });
 }
@@ -208,22 +237,31 @@ async function handleSpin(request: Request, env: any, db: any): Promise<Response
   const settings = await getSettings(db);
   const game = GAME_KEYS.includes(body.game) ? body.game : "wheel";
   const gconf = settings.games[game];
-  const p: any = await applyDailyReset(db, await ensurePlayer(db, user, settings), settings);
+  const p: any = await ensurePlayer(db, user, settings);
   if (!p) return jsonResp({ ok: false, error: "no_user" }, 400);
   if (p.status === "banned") return jsonResp({ ok: false, error: "banned", balance: p.balance });
   if (!gconf.enabled) return jsonResp({ ok: false, error: "disabled", balance: p.balance });
-  if (p.free_spins_left <= 0) return jsonResp({ ok: false, error: "no_spins", balance: p.balance });
 
-  const lo = gconf.award_min, hi = Math.max(gconf.award_min, gconf.award_max);
-  const award = Math.floor(Math.random() * (hi - lo + 1)) + lo;
-  await db.prepare(
-    `UPDATE players SET balance = balance + ?, free_spins_left = free_spins_left - 1
-     WHERE tg_id = ? AND free_spins_left > 0`
-  ).bind(award, user.id).run();
+  const bet = gconf.bet;
+  if (p.balance < bet) {
+    return jsonResp({ ok: false, error: "insufficient", balance: p.balance, message: "积分不足，请联系管理员加分" });
+  }
+  const prize = pickPrize(gconf.prizes);
+  const award = prize.award;
+  // 原子扣注 + 派彩，防并发：仅当余额仍 >= bet 时执行
+  const upd: any = await db.prepare(
+    `UPDATE players SET balance = balance - ? + ? WHERE tg_id = ? AND balance >= ?`
+  ).bind(bet, award, user.id, bet).run();
+  const changed = upd && upd.meta ? upd.meta.changes : 1;
+  if (!changed) {
+    return jsonResp({ ok: false, error: "insufficient", balance: p.balance, message: "积分不足，请联系管理员加分" });
+  }
 
+  const newBal = p.balance - bet + award;
   const label = (GAME_DEFS.find((x) => x.key === game) || { label: game }).label;
-  await logTx(db, user.id, "spin", award, p.balance + award, label);
-  return jsonResp({ ok: true, award, balance: p.balance + award, spins: p.free_spins_left - 1 });
+  const note = `${label}·下注${bet}·中${award}${prize.label ? ("·" + prize.label) : ""}`;
+  await logTx(db, user.id, "spin", award - bet, newBal, note);
+  return jsonResp({ ok: true, award, bet, net: award - bet, balance: newBal, prize_label: prize.label });
 }
 
 // --------------------------------------------------------------------------- //
@@ -297,7 +335,6 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/players":         return adminPlayers(db, body);
       case "/api/admin/adjust":          return adminAdjust(db, body, admin);
       case "/api/admin/ban":             return adminBan(db, body);
-      case "/api/admin/spins":           return adminSpins(db, body);
       case "/api/admin/player/delete":   return adminPlayerDelete(db, body);
       case "/api/admin/transactions":    return adminTransactions(db, body);
       case "/api/admin/settings/get":    return adminSettingsGet(db);
@@ -306,6 +343,9 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/admins/create":   return adminAdminsCreate(db, body);
       case "/api/admin/admins/delete":   return adminAdminsDelete(db, body, admin);
       case "/api/admin/password":        return adminPassword(db, body, admin);
+      case "/api/admin/chat/list":       return adminChatList(db);
+      case "/api/admin/chat/thread":     return adminChatThread(db, body);
+      case "/api/admin/chat/send":       return adminChatSend(db, body, env);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
@@ -387,18 +427,6 @@ async function adminBan(db: any, body: any): Promise<Response> {
   return jsonResp({ ok: true, status });
 }
 
-async function adminSpins(db: any, body: any): Promise<Response> {
-  const tg_id = parseInt(body.tg_id, 10);
-  const spins = Math.max(0, parseInt(body.spins, 10) || 0);
-  if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
-  await db.prepare(`UPDATE players SET free_spins_left = ? WHERE tg_id = ?`).bind(spins, tg_id).run();
-  // 同步标记今天已重置，避免玩家当天再次访问时被自动重置覆盖管理员设定的次数
-  try {
-    await db.prepare(`UPDATE players SET last_reset = ? WHERE tg_id = ?`).bind(todayUTC(), tg_id).run();
-  } catch (e) { /* last_reset 列尚未建 */ }
-  return jsonResp({ ok: true, spins });
-}
-
 async function adminTransactions(db: any, body: any): Promise<Response> {
   const q = (body.q || "").trim();
   const limit = Math.min(200, Math.max(1, parseInt(body.limit, 10) || 50));
@@ -459,20 +487,55 @@ async function adminSettingsGet(db: any): Promise<Response> {
 async function adminSettingsSave(db: any, body: any): Promise<Response> {
   const upsert = (k: string, v: string) => db.prepare(
     `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(k, v);
-  const numKeys = ["daily_spins", "start_balance"];
-  for (const g of GAME_KEYS) numKeys.push(`${g}_award_min`, `${g}_award_max`);
-  const boolKeys = GAME_KEYS.map((g) => `${g}_enabled`);
   const stmts: any[] = [];
-  for (const k of numKeys) {
-    if (body[k] !== undefined && body[k] !== null && body[k] !== "") {
-      stmts.push(upsert(k, String(Math.max(0, parseInt(body[k], 10) || 0))));
-    }
+  if (body.start_balance !== undefined && body.start_balance !== null && body.start_balance !== "") {
+    stmts.push(upsert("start_balance", String(Math.max(0, parseInt(body.start_balance, 10) || 0))));
   }
-  for (const k of boolKeys) {
-    if (body[k] !== undefined) stmts.push(upsert(k, body[k] ? "1" : "0"));
+  const games = body.games || {};
+  for (const def of GAME_DEFS) {
+    const gc = games[def.key];
+    if (!gc) continue;
+    if (gc.bet !== undefined && gc.bet !== null && gc.bet !== "") {
+      stmts.push(upsert(`${def.key}_bet`, String(Math.max(0, parseInt(gc.bet, 10) || 0))));
+    }
+    if (gc.enabled !== undefined) stmts.push(upsert(`${def.key}_enabled`, gc.enabled ? "1" : "0"));
+    if (gc.prizes !== undefined) stmts.push(upsert(`${def.key}_prizes`, JSON.stringify(sanitizePrizes(gc.prizes))));
   }
   if (stmts.length) await db.batch(stmts);
   return jsonResp({ ok: true, settings: await getSettings(db) });
+}
+
+// --------------------------------------------------------------------------- //
+// 后台客服聊天（玩家发给 bot 的消息 <-> 管理员回复）
+// --------------------------------------------------------------------------- //
+async function adminChatList(db: any): Promise<Response> {
+  try {
+    const rows: any = await db.prepare(
+      `SELECT m.tg_id, MAX(m.username) AS username,
+        SUM(CASE WHEN m.direction='in' AND m.seen=0 THEN 1 ELSE 0 END) AS unread,
+        (SELECT text FROM messages x WHERE x.tg_id=m.tg_id ORDER BY x.id DESC LIMIT 1) AS last_text,
+        (SELECT created_at FROM messages x WHERE x.tg_id=m.tg_id ORDER BY x.id DESC LIMIT 1) AS last_at
+       FROM messages m GROUP BY m.tg_id ORDER BY last_at DESC LIMIT 200`).all();
+    return jsonResp({ ok: true, chats: rows.results || [] });
+  } catch (e) { return jsonResp({ ok: true, chats: [] }); }
+}
+
+async function adminChatThread(db: any, body: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const rows: any = await db.prepare(
+    `SELECT id, direction, text, created_at FROM messages WHERE tg_id = ? ORDER BY id ASC LIMIT 500`).bind(tg_id).all();
+  try { await db.prepare(`UPDATE messages SET seen=1 WHERE tg_id=? AND direction='in' AND seen=0`).bind(tg_id).run(); } catch (e) {}
+  return jsonResp({ ok: true, messages: rows.results || [] });
+}
+
+async function adminChatSend(db: any, body: any, env: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  const text = String(body.text || "").slice(0, 2000);
+  if (!tg_id || !text.trim()) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  await sendMessage(env.TELEGRAM_BOT_TOKEN, tg_id, text);
+  await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, text).run();
+  return jsonResp({ ok: true });
 }
 
 async function adminAdminsList(db: any): Promise<Response> {
@@ -519,20 +582,26 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
       if (text.startsWith("/start")) {
         const settings = await getSettings(db);
         await db.prepare(
-          `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, ?)`
-        ).bind(userId, username, settings.start_balance, settings.daily_spins).run();
+          `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, 0)`
+        ).bind(userId, username, settings.start_balance).run();
         const appUrl = url.origin + "/";
         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId,
-          `🎉 欢迎来到霓虹抽奖游戏！\n\n💰 初始积分：${settings.start_balance} 分\n🎁 每日免费抽奖：${settings.daily_spins} 次\n\n点下方按钮进入游戏 👇`,
+          `🎉 欢迎来到霓虹游戏厅！\n\n💰 当前积分：${settings.start_balance} 分\n🎮 下注游戏赢取积分；积分不足请直接在此发消息联系客服充值。\n\n点下方按钮进入游戏 👇`,
           { inline_keyboard: [[{ text: "🚀 进入游戏", web_app: { url: appUrl } }]] });
       } else if (text.startsWith("/profile")) {
         const p: any = await db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(userId).first();
         if (p) {
           await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId,
-            `👤 【${p.username}】\n💰 积分：${p.balance} 分\n🎁 剩余次数：${p.free_spins_left} 次`);
+            `👤 【${p.username}】\n💰 积分：${p.balance} 分`);
         } else {
           await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `❌ 请先输入 /start 激活。`);
         }
+      } else if (text.trim()) {
+        // 普通文字消息 -> 存入客服会话，供后台回复
+        try {
+          await db.prepare(`INSERT INTO messages (tg_id, username, direction, text) VALUES (?, ?, 'in', ?)`)
+            .bind(userId, username, text.slice(0, 2000)).run();
+        } catch (e) { /* messages 表尚未建则忽略 */ }
       }
     }
   } catch (e) {
