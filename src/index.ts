@@ -1,24 +1,25 @@
-// Telegram Mini App 抽奖机器人 — Cloudflare Worker (D1)
-// GET   /            -> 由 Cloudflare 静态资源(public/index.html)直接服务 SPA
+// Telegram Mini App 抽奖机器人 + 后台管理 — Cloudflare Worker (D1)
+// GET   /            -> 由静态资源(public/index.html)直接服务游戏 SPA
+// GET   /admin.html  -> 由静态资源(public/admin.html)直接服务后台 SPA
 // POST  /api/profile -> 校验 initData，返回玩家资料
-// POST  /api/spin    -> 校验 initData，扣次数+加积分
-// POST  其它路径      -> Telegram Webhook（/start 发送"进入游戏"内嵌按钮）
+// POST  /api/spin    -> 校验 initData，扣次数+加积分（读配置区间，写流水）
+// POST  /api/admin/* -> 后台 API（账号密码登录 + 会话令牌鉴权）
+// POST  其它路径      -> Telegram Webhook（webhook 钉在 /webhook）
 
 export default {
   async fetch(request: Request, env: any, ctx: any): Promise<Response> {
-    // 兼容两种绑定名：DB1（面板里配置的）或 DB（仓库 wrangler.jsonc 里的）
     const db: any = env.DB1 || env.DB;
     const url = new URL(request.url);
 
     if (request.method === "GET") {
-      // 正常情况下 GET 会被静态资源拦截、返回 public/index.html，不会进到这里。
-      // 此为兜底（仅当资源未命中时）。
       return new Response("请从 Telegram 内打开游戏 / Open this game inside Telegram.", { status: 200 });
     }
 
     if (request.method === "POST") {
-      if (url.pathname === "/api/profile") return handleProfile(request, env, db);
-      if (url.pathname === "/api/spin") return handleSpin(request, env, db);
+      const path = url.pathname;
+      if (path.startsWith("/api/admin/")) return handleAdmin(request, env, db, path);
+      if (path === "/api/profile") return handleProfile(request, env, db);
+      if (path === "/api/spin") return handleSpin(request, env, db);
       return handleWebhook(request, env, db, url);   // Telegram webhook
     }
 
@@ -27,9 +28,55 @@ export default {
 };
 
 // --------------------------------------------------------------------------- //
+// 小工具
+// --------------------------------------------------------------------------- //
+function jsonResp(obj: any, status = 200): Response {
+  return new Response(JSON.stringify(obj), {
+    status, headers: { "Content-Type": "application/json; charset=utf-8" }
+  });
+}
+
+async function readJson(request: Request): Promise<any> {
+  try { return await request.json(); } catch (e) { return {}; }
+}
+
+function bytesToHex(b: Uint8Array): string {
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+function hexToBytes(h: string): Uint8Array {
+  const a = new Uint8Array(h.length / 2);
+  for (let i = 0; i < a.length; i++) a[i] = parseInt(h.substr(i * 2, 2), 16);
+  return a;
+}
+function b64urlEncode(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(str: string): Uint8Array {
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(str);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function ctEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function hmacBytes(keyStr: string, msgStr: string): Promise<Uint8Array> {
+  const enc = new TextEncoder();
+  const k = await crypto.subtle.importKey(
+    "raw", enc.encode(keyStr), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", k, enc.encode(msgStr));
+  return new Uint8Array(sig);
+}
+
+// --------------------------------------------------------------------------- //
 // 安全：校验 Telegram WebApp initData (HMAC-SHA256)
-//   secret = HMAC_SHA256(key="WebAppData", msg=botToken)
-//   check  = HMAC_SHA256(key=secret, msg=dataCheckString)
 // --------------------------------------------------------------------------- //
 async function validateInitData(initData: string, botToken: string): Promise<any> {
   if (!initData || !botToken) return null;
@@ -48,7 +95,7 @@ async function validateInitData(initData: string, botToken: string): Promise<any
   const kCalc = await crypto.subtle.importKey(
     "raw", new Uint8Array(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const calc = await crypto.subtle.sign("HMAC", kCalc, enc.encode(dataCheckString));
-  const calcHex = [...new Uint8Array(calc)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const calcHex = bytesToHex(new Uint8Array(calc));
   if (calcHex !== hash) return null;
 
   const authDate = parseInt(params.get("auth_date") || "0", 10);
@@ -62,53 +109,303 @@ async function validateInitData(initData: string, botToken: string): Promise<any
   }
 }
 
-function jsonResp(obj: any, status = 200): Response {
-  return new Response(JSON.stringify(obj), {
-    status, headers: { "Content-Type": "application/json; charset=utf-8" }
-  });
-}
-
 async function readInitData(request: Request): Promise<string> {
   try { const b: any = await request.json(); return b.initData || ""; } catch (e) { return ""; }
 }
 
-async function ensurePlayer(db: any, user: any): Promise<any> {
+// --------------------------------------------------------------------------- //
+// 配置 / 流水
+// --------------------------------------------------------------------------- //
+async function getSettings(db: any): Promise<any> {
+  const def: any = { award_min: 10, award_max: 200, daily_spins: 3, start_balance: 1000 };
+  try {
+    const res: any = await db.prepare(`SELECT key, value FROM settings`).all();
+    for (const r of res.results || []) {
+      if (r.key in def) def[r.key] = parseInt(r.value, 10);
+    }
+  } catch (e) { /* settings 表可能尚未建，用默认值 */ }
+  return def;
+}
+
+async function logTx(db: any, tg_id: number, type: string, amount: number,
+                     balance_after: number, note?: string): Promise<void> {
+  try {
+    await db.prepare(
+      `INSERT INTO transactions (tg_id, type, amount, balance_after, note) VALUES (?, ?, ?, ?, ?)`
+    ).bind(tg_id, type, amount, balance_after, note || null).run();
+  } catch (e) { /* 记账失败不影响玩家游戏 */ }
+}
+
+async function ensurePlayer(db: any, user: any, settings: any): Promise<any> {
   const username = user.username || user.first_name || "神秘玩家";
-  await db.prepare(`INSERT OR IGNORE INTO players (tg_id, username) VALUES (?, ?)`)
-    .bind(user.id, username).run();
+  await db.prepare(
+    `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, ?)`
+  ).bind(user.id, username, settings.start_balance, settings.daily_spins).run();
   return db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(user.id).first();
 }
 
 // --------------------------------------------------------------------------- //
-// API
+// 玩家 API
 // --------------------------------------------------------------------------- //
 async function handleProfile(request: Request, env: any, db: any): Promise<Response> {
   const user = await validateInitData(await readInitData(request), env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
-  const p: any = await ensurePlayer(db, user);
+  const settings = await getSettings(db);
+  const p: any = await ensurePlayer(db, user, settings);
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),
     balance: p ? p.balance : 0,
-    spins: p ? p.free_spins_left : 0
+    spins: p ? p.free_spins_left : 0,
+    banned: p ? (p.status === "banned") : false
   });
 }
 
 async function handleSpin(request: Request, env: any, db: any): Promise<Response> {
   const user = await validateInitData(await readInitData(request), env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
-  const p: any = await ensurePlayer(db, user);
+  const settings = await getSettings(db);
+  const p: any = await ensurePlayer(db, user, settings);
   if (!p) return jsonResp({ ok: false, error: "no_user" }, 400);
+  if (p.status === "banned") return jsonResp({ ok: false, error: "banned", balance: p.balance });
   if (p.free_spins_left <= 0) return jsonResp({ ok: false, error: "no_spins", balance: p.balance });
 
-  const award = Math.floor(Math.random() * 191) + 10;
-  // 带守卫的扣减，避免并发抽到负数
+  const lo = settings.award_min, hi = Math.max(settings.award_min, settings.award_max);
+  const award = Math.floor(Math.random() * (hi - lo + 1)) + lo;
   await db.prepare(
     `UPDATE players SET balance = balance + ?, free_spins_left = free_spins_left - 1
      WHERE tg_id = ? AND free_spins_left > 0`
   ).bind(award, user.id).run();
 
+  await logTx(db, user.id, "spin", award, p.balance + award);
   return jsonResp({ ok: true, award, balance: p.balance + award, spins: p.free_spins_left - 1 });
+}
+
+// --------------------------------------------------------------------------- //
+// 后台：密码哈希 + 会话令牌
+// --------------------------------------------------------------------------- //
+async function pbkdf2Hex(password: string, saltHex: string, iterations: number): Promise<string> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: hexToBytes(saltHex), iterations, hash: "SHA-256" }, keyMaterial, 256);
+  return bytesToHex(new Uint8Array(bits));
+}
+async function hashPassword(password: string): Promise<string> {
+  const iterations = 100000;
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = bytesToHex(salt);
+  const hashHex = await pbkdf2Hex(password, saltHex, iterations);
+  return `pbkdf2$sha256$${iterations}$${saltHex}$${hashHex}`;
+}
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const parts = (stored || "").split("$");
+  if (parts.length !== 5 || parts[0] !== "pbkdf2") return false;
+  const iterations = parseInt(parts[2], 10);
+  const calc = await pbkdf2Hex(password, parts[3], iterations);
+  return ctEq(calc, parts[4]);
+}
+
+async function signToken(payload: any, key: string): Promise<string> {
+  const enc = new TextEncoder();
+  const body = b64urlEncode(enc.encode(JSON.stringify(payload)));
+  const sig = await hmacBytes(key, body);
+  return body + "." + b64urlEncode(sig);
+}
+async function verifyToken(token: string, key: string): Promise<any> {
+  if (!token) return null;
+  const dot = token.indexOf(".");
+  if (dot < 0) return null;
+  const body = token.slice(0, dot), sigPart = token.slice(dot + 1);
+  const expected = b64urlEncode(await hmacBytes(key, body));
+  if (!ctEq(expected, sigPart)) return null;
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(body)));
+    if (payload.exp && Date.now() / 1000 > payload.exp) return null;
+    return payload;
+  } catch (e) { return null; }
+}
+function sessionKey(env: any): string {
+  // 用已有的 bot token 作为服务端签名密钥（永不下发给客户端）
+  return env.TELEGRAM_BOT_TOKEN || "minigame1-admin-fallback-key";
+}
+async function requireAdmin(request: Request, env: any): Promise<any> {
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  return await verifyToken(token, sessionKey(env));
+}
+
+// --------------------------------------------------------------------------- //
+// 后台 API 路由
+// --------------------------------------------------------------------------- //
+async function handleAdmin(request: Request, env: any, db: any, path: string): Promise<Response> {
+  if (path === "/api/admin/login") return adminLogin(request, env, db);
+
+  const admin = await requireAdmin(request, env);
+  if (!admin) return jsonResp({ ok: false, error: "unauthorized" }, 401);
+  const body = await readJson(request);
+
+  try {
+    switch (path) {
+      case "/api/admin/overview":        return adminOverview(db);
+      case "/api/admin/players":         return adminPlayers(db, body);
+      case "/api/admin/adjust":          return adminAdjust(db, body, admin);
+      case "/api/admin/ban":             return adminBan(db, body);
+      case "/api/admin/spins":           return adminSpins(db, body);
+      case "/api/admin/transactions":    return adminTransactions(db, body);
+      case "/api/admin/settings/get":    return adminSettingsGet(db);
+      case "/api/admin/settings/save":   return adminSettingsSave(db, body);
+      case "/api/admin/admins/list":     return adminAdminsList(db);
+      case "/api/admin/admins/create":   return adminAdminsCreate(db, body);
+      case "/api/admin/admins/delete":   return adminAdminsDelete(db, body, admin);
+      default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
+    }
+  } catch (e: any) {
+    return jsonResp({ ok: false, error: "server", detail: String(e && e.message || e) }, 500);
+  }
+}
+
+async function adminLogin(request: Request, env: any, db: any): Promise<Response> {
+  const { username, password } = await readJson(request);
+  if (!username || !password) return jsonResp({ ok: false, error: "missing" }, 400);
+  const row: any = await db.prepare(`SELECT id, username, password FROM admins WHERE username = ?`)
+    .bind(String(username)).first();
+  if (!row || !(await verifyPassword(String(password), row.password))) {
+    return jsonResp({ ok: false, error: "invalid" }, 401);
+  }
+  const exp = Math.floor(Date.now() / 1000) + 12 * 3600;   // 12 小时
+  const token = await signToken({ uid: row.id, username: row.username, exp }, sessionKey(env));
+  return jsonResp({ ok: true, token, username: row.username });
+}
+
+async function adminOverview(db: any): Promise<Response> {
+  const u: any = await db.prepare(`SELECT COUNT(*) c, COALESCE(SUM(balance),0) s FROM players`).first();
+  let today = 0;
+  try {
+    const t: any = await db.prepare(
+      `SELECT COUNT(*) c FROM transactions WHERE type='spin' AND date(created_at)=date('now')`).first();
+    today = t ? t.c : 0;
+  } catch (e) { today = 0; }
+  return jsonResp({
+    ok: true,
+    users: u ? u.c : 0,
+    total_points: u ? u.s : 0,
+    today_spins: today
+  });
+}
+
+async function adminPlayers(db: any, body: any): Promise<Response> {
+  const q = (body.q || "").trim();
+  let rows;
+  if (q) {
+    const like = `%${q}%`;
+    rows = await db.prepare(
+      `SELECT tg_id, username, balance, free_spins_left, status FROM players
+       WHERE CAST(tg_id AS TEXT) LIKE ? OR username LIKE ?
+       ORDER BY balance DESC LIMIT 500`).bind(like, like).all();
+  } else {
+    rows = await db.prepare(
+      `SELECT tg_id, username, balance, free_spins_left, status FROM players
+       ORDER BY balance DESC LIMIT 500`).all();
+  }
+  return jsonResp({ ok: true, players: rows.results || [] });
+}
+
+async function adminAdjust(db: any, body: any, admin: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  const amount = parseInt(body.amount, 10);
+  const note = (body.note || "").slice(0, 200) || (admin ? `by ${admin.username}` : null);
+  if (!tg_id || !amount) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const p: any = await db.prepare(`SELECT balance FROM players WHERE tg_id = ?`).bind(tg_id).first();
+  if (!p) return jsonResp({ ok: false, error: "no_user" }, 404);
+  const newBal = p.balance + amount;
+  if (newBal < 0) return jsonResp({ ok: false, error: "insufficient", balance: p.balance }, 400);
+  await db.prepare(`UPDATE players SET balance = ? WHERE tg_id = ?`).bind(newBal, tg_id).run();
+  await logTx(db, tg_id, amount >= 0 ? "admin_grant" : "admin_deduct", amount, newBal, note);
+  return jsonResp({ ok: true, balance: newBal });
+}
+
+async function adminBan(db: any, body: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  const status = body.status === "banned" ? "banned" : "active";
+  if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  await db.prepare(`UPDATE players SET status = ? WHERE tg_id = ?`).bind(status, tg_id).run();
+  return jsonResp({ ok: true, status });
+}
+
+async function adminSpins(db: any, body: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  const spins = Math.max(0, parseInt(body.spins, 10) || 0);
+  if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  await db.prepare(`UPDATE players SET free_spins_left = ? WHERE tg_id = ?`).bind(spins, tg_id).run();
+  return jsonResp({ ok: true, spins });
+}
+
+async function adminTransactions(db: any, body: any): Promise<Response> {
+  const q = (body.q || "").trim();
+  const limit = Math.min(2000, Math.max(1, parseInt(body.limit, 10) || 500));
+  const conds: string[] = [];
+  const binds: any[] = [];
+  if (q) {
+    conds.push(`(CAST(t.tg_id AS TEXT) LIKE ? OR p.username LIKE ? OR t.type LIKE ?)`);
+    const like = `%${q}%`; binds.push(like, like, like);
+  }
+  if (body.from) { conds.push(`date(t.created_at) >= date(?)`); binds.push(body.from); }
+  if (body.to)   { conds.push(`date(t.created_at) <= date(?)`); binds.push(body.to); }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const rows = await db.prepare(
+    `SELECT t.id, t.tg_id, p.username, t.type, t.amount, t.balance_after, t.note, t.created_at
+     FROM transactions t LEFT JOIN players p ON p.tg_id = t.tg_id
+     ${where} ORDER BY t.id DESC LIMIT ?`).bind(...binds, limit).all();
+  return jsonResp({ ok: true, transactions: rows.results || [] });
+}
+
+async function adminSettingsGet(db: any): Promise<Response> {
+  return jsonResp({ ok: true, settings: await getSettings(db) });
+}
+
+async function adminSettingsSave(db: any, body: any): Promise<Response> {
+  const keys = ["award_min", "award_max", "daily_spins", "start_balance"];
+  const stmts: any[] = [];
+  for (const k of keys) {
+    if (body[k] !== undefined && body[k] !== null && body[k] !== "") {
+      const v = String(Math.max(0, parseInt(body[k], 10) || 0));
+      stmts.push(db.prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(k, v));
+    }
+  }
+  if (stmts.length) await db.batch(stmts);
+  return jsonResp({ ok: true, settings: await getSettings(db) });
+}
+
+async function adminAdminsList(db: any): Promise<Response> {
+  const rows = await db.prepare(`SELECT id, username, created_at FROM admins ORDER BY id`).all();
+  return jsonResp({ ok: true, admins: rows.results || [] });
+}
+
+async function adminAdminsCreate(db: any, body: any): Promise<Response> {
+  const username = (body.username || "").trim();
+  const password = String(body.password || "");
+  if (username.length < 3 || password.length < 6) {
+    return jsonResp({ ok: false, error: "weak", message: "用户名≥3位、密码≥6位" }, 400);
+  }
+  const exists: any = await db.prepare(`SELECT id FROM admins WHERE username = ?`).bind(username).first();
+  if (exists) return jsonResp({ ok: false, error: "exists", message: "用户名已存在" }, 400);
+  const stored = await hashPassword(password);
+  await db.prepare(`INSERT INTO admins (username, password) VALUES (?, ?)`).bind(username, stored).run();
+  return jsonResp({ ok: true });
+}
+
+async function adminAdminsDelete(db: any, body: any, admin: any): Promise<Response> {
+  const id = parseInt(body.id, 10);
+  if (!id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  if (admin && admin.uid === id) return jsonResp({ ok: false, error: "self", message: "不能删除当前登录账号" }, 400);
+  const cnt: any = await db.prepare(`SELECT COUNT(*) c FROM admins`).first();
+  if (cnt && cnt.c <= 1) return jsonResp({ ok: false, error: "last", message: "至少保留一个管理员" }, 400);
+  await db.prepare(`DELETE FROM admins WHERE id = ?`).bind(id).run();
+  return jsonResp({ ok: true });
 }
 
 // --------------------------------------------------------------------------- //
@@ -125,11 +422,13 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
       const username = msg.from.username || msg.from.first_name || "神秘玩家";
 
       if (text.startsWith("/start")) {
-        await db.prepare(`INSERT OR IGNORE INTO players (tg_id, username) VALUES (?, ?)`)
-          .bind(userId, username).run();
-        const appUrl = url.origin + "/";   // Mini App = 本 Worker 的根地址
+        const settings = await getSettings(db);
+        await db.prepare(
+          `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, ?)`
+        ).bind(userId, username, settings.start_balance, settings.daily_spins).run();
+        const appUrl = url.origin + "/";
         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId,
-          `🎉 欢迎来到霓虹抽奖游戏！\n\n💰 初始积分：1000 分\n🎁 每日免费抽奖：3 次\n\n点下方按钮进入游戏 👇`,
+          `🎉 欢迎来到霓虹抽奖游戏！\n\n💰 初始积分：${settings.start_balance} 分\n🎁 每日免费抽奖：${settings.daily_spins} 次\n\n点下方按钮进入游戏 👇`,
           { inline_keyboard: [[{ text: "🚀 进入游戏", web_app: { url: appUrl } }]] });
       } else if (text.startsWith("/profile")) {
         const p: any = await db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(userId).first();

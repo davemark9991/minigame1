@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>MINI GAME · 控制台</title>
+<style>
+  :root{
+    --bg:#0a0c12; --bg2:#0e1118; --panel:#12161f; --panel2:#161b26;
+    --border:#222937; --border2:#2c3545;
+    --text:#e7ebf2; --muted:#8b95a7; --faint:#5d6677;
+    --accent:#5b7cfa; --accent2:#4f6ef0; --accentSoft:rgba(91,124,250,.12);
+    --pos:#34d399; --neg:#f87171; --warn:#fbbf24;
+    --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 600px at 80% -10%, #131a2b 0%, var(--bg) 55%) fixed;
+    color:var(--text);
+    font-family:'Inter','Segoe UI',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+    font-size:14px; -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;cursor:pointer}
+  input,select{font-family:inherit}
+  a{color:var(--accent);text-decoration:none}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#222a38;border-radius:6px;border:2px solid var(--bg)}
+
+  /* ---------- Login ---------- */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .login{
+    width:380px;max-width:100%;background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--border);border-radius:18px;padding:34px 30px;box-shadow:var(--shadow)}
+  .brand{display:flex;align-items:center;gap:11px;margin-bottom:6px}
+  .brand .logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),#7c5cfa);font-size:20px;box-shadow:0 6px 16px var(--accentSoft)}
+  .brand b{font-size:17px;letter-spacing:.3px}
+  .brand small{display:block;color:var(--muted);font-size:11.5px;font-weight:500;letter-spacing:2px;margin-top:2px}
+  .login h2{font-size:15px;font-weight:600;margin:22px 0 16px;color:var(--text)}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:7px;font-weight:500}
+  .input{width:100%;background:var(--bg2);border:1px solid var(--border2);color:var(--text);
+    padding:11px 13px;border-radius:10px;font-size:14px;transition:border-color .15s,box-shadow .15s}
+  .input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;
+    padding:11px 16px;font-size:13.5px;font-weight:600;color:#fff;background:var(--accent);transition:filter .15s,transform .05s}
+  .btn:hover{filter:brightness(1.08)} .btn:active{transform:translateY(1px)}
+  .btn.full{width:100%;padding:12px}
+  .btn.ghost{background:transparent;border:1px solid var(--border2);color:var(--text)}
+  .btn.ghost:hover{border-color:var(--accent);color:#fff;filter:none}
+  .btn.sm{padding:6px 11px;font-size:12px;border-radius:8px}
+  .btn.pos{background:var(--pos);color:#06281c} .btn.neg{background:var(--neg);color:#3a0d0d}
+  .btn.warn{background:var(--warn);color:#3a2c05}
+  .err{color:var(--neg);font-size:12.5px;margin-top:10px;min-height:16px}
+
+  /* ---------- App shell ---------- */
+  .app{display:none;min-height:100vh}
+  .app.on{display:grid;grid-template-columns:228px 1fr}
+  .side{background:var(--bg2);border-right:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+  .side .brand{padding:4px 8px 18px}
+  .nav{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;color:var(--muted);
+    font-weight:500;font-size:13.5px;transition:background .15s,color .15s}
+  .nav .ic{width:18px;text-align:center;font-size:15px}
+  .nav:hover{background:var(--panel);color:var(--text)}
+  .nav.active{background:var(--accentSoft);color:#fff}
+  .nav.active .ic{filter:drop-shadow(0 0 6px var(--accent))}
+  .side .spacer{flex:1}
+  .side .who{padding:10px 12px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;margin-top:8px}
+  .side .who b{color:var(--text);display:block;font-size:13px;margin-bottom:2px}
+
+  .main{padding:26px 30px;min-width:0}
+  .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap}
+  .head h1{font-size:20px;font-weight:650;margin:0;letter-spacing:.2px}
+  .head .sub{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-bottom:8px}
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);
+    border-radius:var(--radius);padding:18px 20px}
+  .card .k{color:var(--muted);font-size:12.5px;font-weight:500;display:flex;align-items:center;gap:8px}
+  .card .v{font-size:27px;font-weight:700;margin-top:10px;letter-spacing:.5px}
+  .card .dot{width:9px;height:9px;border-radius:50%}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .panel + .panel{margin-top:18px}
+  .panel .ph{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap}
+  .panel .ph h3{margin:0;font-size:14px;font-weight:600}
+  .filters{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .filters .input{padding:8px 11px;border-radius:8px;font-size:13px}
+  .filters .input.search{width:260px;max-width:48vw}
+  .filters .input.date{width:148px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{ text-align:left;color:var(--muted);font-weight:500;font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;
+    padding:11px 16px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0}
+  td{padding:11px 16px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:var(--panel2)}
+  .tbl-wrap{max-height:60vh;overflow:auto}
+  .mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .pos{color:var(--pos)} .neg{color:var(--neg)}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.active{background:rgba(52,211,153,.12);color:var(--pos)}
+  .pill.banned{background:rgba(248,113,113,.13);color:var(--neg)}
+  .pill.type{background:var(--panel2);color:var(--muted);border:1px solid var(--border2)}
+  .rowact{display:flex;gap:6px;flex-wrap:wrap}
+  .empty{padding:40px;text-align:center;color:var(--faint)}
+
+  .formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;padding:20px 18px}
+  .formgrid .field{margin:0}
+  .settings-foot{padding:0 18px 18px;display:flex;gap:10px;align-items:center}
+
+  /* toast + modal */
+  #toast{position:fixed;right:22px;bottom:22px;display:flex;flex-direction:column;gap:10px;z-index:60}
+  .toast{background:var(--panel2);border:1px solid var(--border2);border-left:3px solid var(--accent);
+    padding:12px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13px;min-width:200px;animation:slidein .2s ease}
+  .toast.ok{border-left-color:var(--pos)} .toast.bad{border-left-color:var(--neg)}
+  @keyframes slidein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .modal-bg{position:fixed;inset:0;background:rgba(4,6,10,.66);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(2px)}
+  .modal-bg.on{display:flex}
+  .modal{width:360px;max-width:92vw;background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--border2);border-radius:16px;padding:22px;box-shadow:var(--shadow)}
+  .modal h3{margin:0 0 4px;font-size:15px}
+  .modal p{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+  .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+  @media(max-width:760px){
+    .app.on{grid-template-columns:1fr}
+    .side{position:fixed;z-index:40;left:0;top:0;transform:translateX(-100%);transition:transform .2s;width:228px}
+    .side.show{transform:none}
+    .main{padding:18px 16px}
+    .menu-btn{display:inline-flex!important}
+  }
+  .menu-btn{display:none}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div class="login-wrap" id="loginView">
+  <form class="login" id="loginForm" autocomplete="off">
+    <div class="brand">
+      <div class="logo">🎮</div>
+      <div><b>MINI GAME</b><small>ADMIN CONSOLE</small></div>
+    </div>
+    <h2>管理员登录</h2>
+    <div class="field">
+      <label>管理员账号</label>
+      <input class="input" id="luser" placeholder="用户名" autocomplete="username" />
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input class="input" id="lpass" type="password" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <button class="btn full" type="submit" id="lbtn">登录</button>
+    <div class="err" id="lerr"></div>
+  </form>
+</div>
+
+<!-- ============ APP ============ -->
+<div class="app" id="appView">
+  <aside class="side" id="side">
+    <div class="brand">
+      <div class="logo">🎮</div>
+      <div><b>MINI GAME</b><small>ADMIN CONSOLE</small></div>
+    </div>
+    <a class="nav active" data-view="overview"><span class="ic">📊</span> 总览</a>
+    <a class="nav" data-view="users"><span class="ic">👥</span> 玩家管理</a>
+    <a class="nav" data-view="tx"><span class="ic">🧾</span> 交易流水</a>
+    <a class="nav" data-view="settings"><span class="ic">🎛️</span> 游戏设置</a>
+    <a class="nav" data-view="admins"><span class="ic">🔐</span> 管理员</a>
+    <div class="spacer"></div>
+    <div class="who"><b id="whoName">—</b>已登录</div>
+    <a class="nav" id="logoutBtn"><span class="ic">🚪</span> 退出登录</a>
+  </aside>
+
+  <main class="main">
+    <div class="head">
+      <div>
+        <button class="btn ghost sm menu-btn" id="menuBtn">☰</button>
+        <h1 id="pageTitle">总览</h1>
+        <div class="sub" id="pageSub">线上数据 · 实时</div>
+      </div>
+      <div class="toolbar" id="toolbar"></div>
+    </div>
+    <div id="content"></div>
+  </main>
+</div>
+
+<div id="toast"></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+
+<script>
+const API = location.origin;
+let TOKEN = localStorage.getItem("mg_admin_token") || "";
+let WHO = localStorage.getItem("mg_admin_user") || "";
+let cachePlayers = [], cacheTx = [];
+
+/* ---------- helpers ---------- */
+const $ = (s,r=document)=>r.querySelector(s);
+const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+const fmt = n => (n==null?"—":Number(n).toLocaleString("en-US"));
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+
+function toast(msg, kind){
+  const t = el("div","toast "+(kind||""),esc(msg));
+  $("#toast").appendChild(t);
+  setTimeout(()=>{t.style.opacity="0";t.style.transition="opacity .3s";setTimeout(()=>t.remove(),300);},2600);
+}
+
+async function api(path, body){
+  const r = await fetch(API+"/api/admin/"+path,{
+    method:"POST",
+    headers:{"Content-Type":"application/json", ...(TOKEN?{"Authorization":"Bearer "+TOKEN}:{})},
+    body:JSON.stringify(body||{})
+  });
+  if(r.status===401 && path!=="login"){ logout(); throw new Error("登录已过期，请重新登录"); }
+  let data={}; try{ data = await r.json(); }catch(e){}
+  if(!r.ok || data.ok===false){ throw new Error(data.message || data.error || ("HTTP "+r.status)); }
+  return data;
+}
+
+/* ---------- auth ---------- */
+$("#loginForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  $("#lerr").textContent=""; const b=$("#lbtn"); b.disabled=true; b.textContent="登录中…";
+  try{
+    const d = await api("login",{username:$("#luser").value.trim(), password:$("#lpass").value});
+    TOKEN=d.token; WHO=d.username;
+    localStorage.setItem("mg_admin_token",TOKEN); localStorage.setItem("mg_admin_user",WHO);
+    enterApp();
+  }catch(err){ $("#lerr").textContent = err.message==="invalid"?"账号或密码错误":err.message; }
+  b.disabled=false; b.textContent="登录";
+});
+function logout(){
+  TOKEN=""; WHO=""; localStorage.removeItem("mg_admin_token"); localStorage.removeItem("mg_admin_user");
+  $("#appView").classList.remove("on"); $("#loginView").style.display="flex";
+}
+$("#logoutBtn").addEventListener("click",logout);
+
+function enterApp(){
+  $("#loginView").style.display="none";
+  $("#appView").classList.add("on");
+  $("#whoName").textContent = WHO || "admin";
+  go("overview");
+}
+
+/* ---------- nav ---------- */
+const TITLES = {overview:["总览","线上数据 · 实时"],users:["玩家管理","查看 / 调整线上真实玩家"],
+  tx:["交易流水","所有抽奖与积分变动记录"],settings:["游戏设置","改动实时影响线上抽奖"],admins:["管理员","账号增删（各自独立登录）"]};
+document.querySelectorAll(".nav[data-view]").forEach(n=>n.addEventListener("click",()=>go(n.dataset.view)));
+$("#menuBtn").addEventListener("click",()=>$("#side").classList.toggle("show"));
+
+function go(view){
+  document.querySelectorAll(".nav[data-view]").forEach(n=>n.classList.toggle("active",n.dataset.view===view));
+  $("#pageTitle").textContent=TITLES[view][0]; $("#pageSub").textContent=TITLES[view][1];
+  $("#toolbar").innerHTML=""; $("#content").innerHTML='<div class="empty">加载中…</div>';
+  $("#side").classList.remove("show");
+  ({overview:viewOverview,users:viewUsers,tx:viewTx,settings:viewSettings,admins:viewAdmins}[view])();
+}
+
+/* ---------- Overview ---------- */
+async function viewOverview(){
+  try{
+    const d = await api("overview");
+    const cards = [
+      ["玩家总数","👥",fmt(d.users),"var(--accent)"],
+      ["系统总积分","💰",fmt(d.total_points),"var(--pos)"],
+      ["今日抽奖次数","🎰",fmt(d.today_spins),"var(--warn)"]
+    ];
+    const wrap = el("div","cards");
+    cards.forEach(([k,ic,v,col])=>{
+      const c = el("div","card");
+      c.innerHTML = `<div class="k"><span class="dot" style="background:${col}"></span>${ic} ${k}</div><div class="v">${v}</div>`;
+      wrap.appendChild(c);
+    });
+    $("#content").innerHTML=""; $("#content").appendChild(wrap);
+  }catch(e){ $("#content").innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* ---------- Users ---------- */
+async function viewUsers(){
+  $("#toolbar").innerHTML="";
+  const exp = el("button","btn ghost sm","📥 导出 CSV"); exp.onclick=()=>exportCsv("players",cachePlayers);
+  $("#toolbar").appendChild(exp);
+
+  const panel = el("div","panel");
+  panel.innerHTML = `<div class="ph"><h3>玩家列表</h3>
+    <div class="filters"><input class="input search" id="uq" placeholder="🔎 搜索 昵称 / Telegram ID"></div></div>
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>Telegram ID</th><th>昵称</th><th>积分</th><th>剩余次数</th><th>状态</th><th>操作</th>
+    </tr></thead><tbody id="ubody"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody></table></div>`;
+  $("#content").innerHTML=""; $("#content").appendChild(panel);
+
+  const load = async q=>{
+    try{ const d = await api("players",{q}); cachePlayers=d.players; renderUsers(d.players); }
+    catch(e){ $("#ubody").innerHTML=`<tr><td colspan="6" class="empty">${esc(e.message)}</td></tr>`; }
+  };
+  let tmr; $("#uq").addEventListener("input",e=>{clearTimeout(tmr);tmr=setTimeout(()=>load(e.target.value.trim()),250);});
+  load("");
+}
+function renderUsers(rows){
+  const b=$("#ubody"); b.innerHTML="";
+  if(!rows.length){ b.innerHTML='<tr><td colspan="6" class="empty">暂无玩家</td></tr>'; return; }
+  rows.forEach(p=>{
+    const tr=el("tr");
+    tr.innerHTML = `<td class="mono">${p.tg_id}</td><td>${esc(p.username)||"<span style='color:var(--faint)'>—</span>"}</td>
+      <td class="mono">${fmt(p.balance)}</td><td class="mono">${fmt(p.free_spins_left)}</td>
+      <td><span class="pill ${p.status==='banned'?'banned':'active'}">${p.status==='banned'?'已封禁':'正常'}</span></td>`;
+    const act=el("td"); const wrap=el("div","rowact");
+    const bg=el("button","btn pos sm","➕分"), bd=el("button","btn neg sm","➖分"),
+          bs=el("button","btn ghost sm","次数"),
+          bb=el("button","btn "+(p.status==='banned'?"warn":"ghost")+" sm",p.status==='banned'?"解封":"封禁");
+    bg.onclick=()=>adjustModal(p,1); bd.onclick=()=>adjustModal(p,-1);
+    bs.onclick=()=>spinsModal(p);
+    bb.onclick=()=>banPlayer(p);
+    wrap.append(bg,bd,bs,bb); act.appendChild(wrap); tr.appendChild(act); b.appendChild(tr);
+  });
+}
+function adjustModal(p,sign){
+  modal(`${sign>0?"赠送积分":"扣除积分"}`, `玩家 <b>${esc(p.username)||p.tg_id}</b>（当前 ${fmt(p.balance)} 分）`,
+    `<div class="field"><label>数量</label><input class="input" id="mAmt" type="number" min="1" value="100"></div>
+     <div class="field"><label>备注（可选）</label><input class="input" id="mNote" placeholder="例如：活动奖励"></div>`,
+    async()=>{
+      const amt=Math.abs(parseInt($("#mAmt").value,10)||0); if(!amt) return toast("请输入数量","bad");
+      await api("adjust",{tg_id:p.tg_id,amount:sign*amt,note:$("#mNote").value.trim()});
+      toast("已"+(sign>0?"赠送":"扣除")+" "+amt+" 分","ok"); closeModal(); refreshUsers();
+    });
+}
+function spinsModal(p){
+  modal("设置剩余抽奖次数",`玩家 <b>${esc(p.username)||p.tg_id}</b>（当前 ${fmt(p.free_spins_left)} 次）`,
+    `<div class="field"><label>次数</label><input class="input" id="mSpin" type="number" min="0" value="${p.free_spins_left}"></div>`,
+    async()=>{ await api("spins",{tg_id:p.tg_id,spins:parseInt($("#mSpin").value,10)||0});
+      toast("次数已更新","ok"); closeModal(); refreshUsers(); });
+}
+async function banPlayer(p){
+  const to = p.status==='banned'?"active":"banned";
+  try{ await api("ban",{tg_id:p.tg_id,status:to}); toast(to==='banned'?"已封禁":"已解封","ok"); refreshUsers(); }
+  catch(e){ toast(e.message,"bad"); }
+}
+async function refreshUsers(){ const q=($("#uq")&&$("#uq").value.trim())||""; const d=await api("players",{q}); cachePlayers=d.players; renderUsers(d.players); }
+
+/* ---------- Transactions ---------- */
+async function viewTx(){
+  const exp = el("button","btn ghost sm","📥 导出 CSV"); exp.onclick=()=>exportCsv("transactions",cacheTx);
+  $("#toolbar").appendChild(exp);
+  const panel=el("div","panel");
+  panel.innerHTML=`<div class="ph"><h3>交易流水</h3><div class="filters">
+    <input class="input search" id="tq" placeholder="🔎 昵称 / Telegram ID / 类型">
+    <input class="input date" id="tfrom" type="date"><input class="input date" id="tto" type="date">
+    </div></div>
+    <div class="tbl-wrap"><table><thead><tr>
+    <th>#</th><th>时间(UTC)</th><th>昵称</th><th>Telegram ID</th><th>类型</th><th>变动</th><th>余额</th><th>备注</th>
+    </tr></thead><tbody id="tbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody></table></div>`;
+  $("#content").innerHTML=""; $("#content").appendChild(panel);
+  const load=async()=>{
+    try{ const d=await api("transactions",{q:$("#tq").value.trim(),from:$("#tfrom").value,to:$("#tto").value,limit:1000});
+      cacheTx=d.transactions; renderTx(d.transactions); }
+    catch(e){ $("#tbody").innerHTML=`<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`; }
+  };
+  let tmr; $("#tq").addEventListener("input",()=>{clearTimeout(tmr);tmr=setTimeout(load,250);});
+  $("#tfrom").addEventListener("change",load); $("#tto").addEventListener("change",load);
+  load();
+}
+const TYPE_LABEL={spin:"🎰 抽奖",admin_grant:"➕ 赠送",admin_deduct:"➖ 扣除"};
+function renderTx(rows){
+  const b=$("#tbody"); b.innerHTML="";
+  if(!rows.length){ b.innerHTML='<tr><td colspan="8" class="empty">暂无流水</td></tr>'; return; }
+  rows.forEach(t=>{
+    const cls=t.amount>=0?"pos":"neg", sgn=t.amount>=0?"+":"";
+    const tr=el("tr");
+    tr.innerHTML=`<td class="mono" style="color:var(--faint)">${t.id}</td>
+      <td class="mono" style="color:var(--muted)">${esc(t.created_at)}</td>
+      <td>${esc(t.username)||"<span style='color:var(--faint)'>—</span>"}</td>
+      <td class="mono">${t.tg_id}</td>
+      <td><span class="pill type">${TYPE_LABEL[t.type]||esc(t.type)}</span></td>
+      <td class="mono ${cls}">${sgn}${fmt(t.amount)}</td>
+      <td class="mono">${fmt(t.balance_after)}</td>
+      <td style="color:var(--muted)">${esc(t.note)||""}</td>`;
+    b.appendChild(tr);
+  });
+}
+
+/* ---------- Settings ---------- */
+async function viewSettings(){
+  let s={};
+  try{ s=(await api("settings/get")).settings; }
+  catch(e){ $("#content").innerHTML=`<div class="empty">${esc(e.message)}</div>`; return; }
+  const panel=el("div","panel");
+  panel.innerHTML=`<div class="ph"><h3>经济参数</h3><span style="color:var(--muted);font-size:12px">保存后立即对线上抽奖生效</span></div>
+    <div class="formgrid">
+      <div class="field"><label>单次抽奖最低奖励（分）</label><input class="input" id="s_award_min" type="number" min="0" value="${s.award_min}"></div>
+      <div class="field"><label>单次抽奖最高奖励（分）</label><input class="input" id="s_award_max" type="number" min="0" value="${s.award_max}"></div>
+      <div class="field"><label>每日免费抽奖次数（新玩家）</label><input class="input" id="s_daily_spins" type="number" min="0" value="${s.daily_spins}"></div>
+      <div class="field"><label>新玩家初始积分</label><input class="input" id="s_start_balance" type="number" min="0" value="${s.start_balance}"></div>
+    </div>
+    <div class="settings-foot"><button class="btn" id="saveSet">💾 保存设置</button>
+      <span style="color:var(--faint);font-size:12px">奖励区间用于每次 /api/spin；初始积分/次数用于新玩家注册。</span></div>`;
+  $("#content").innerHTML=""; $("#content").appendChild(panel);
+  $("#saveSet").onclick=async()=>{
+    const body={award_min:$("#s_award_min").value,award_max:$("#s_award_max").value,
+      daily_spins:$("#s_daily_spins").value,start_balance:$("#s_start_balance").value};
+    if(parseInt(body.award_min)>parseInt(body.award_max)) return toast("最低奖励不能大于最高奖励","bad");
+    try{ await api("settings/save",body); toast("设置已保存并生效","ok"); }catch(e){ toast(e.message,"bad"); }
+  };
+}
+
+/* ---------- Admins ---------- */
+async function viewAdmins(){
+  const addBtn=el("button","btn sm","➕ 新增管理员"); addBtn.onclick=createAdminModal;
+  $("#toolbar").appendChild(addBtn);
+  const panel=el("div","panel");
+  panel.innerHTML=`<div class="ph"><h3>管理员账号</h3><span style="color:var(--muted);font-size:12px">每个账号独立用户名+密码登录</span></div>
+    <div class="tbl-wrap"><table><thead><tr><th>ID</th><th>用户名</th><th>创建时间(UTC)</th><th>操作</th></tr></thead>
+    <tbody id="abody"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody></table></div>`;
+  $("#content").innerHTML=""; $("#content").appendChild(panel);
+  loadAdmins();
+}
+async function loadAdmins(){
+  try{
+    const d=await api("admins/list"); const b=$("#abody"); b.innerHTML="";
+    if(!d.admins.length){ b.innerHTML='<tr><td colspan="4" class="empty">无</td></tr>'; return; }
+    d.admins.forEach(a=>{
+      const tr=el("tr");
+      tr.innerHTML=`<td class="mono" style="color:var(--faint)">${a.id}</td><td><b>${esc(a.username)}</b>${a.username===WHO?' <span class="pill type">当前</span>':''}</td>
+        <td class="mono" style="color:var(--muted)">${esc(a.created_at)}</td>`;
+      const td=el("td"); const del=el("button","btn neg sm","删除");
+      del.onclick=()=>{ if(a.username===WHO) return toast("不能删除当前登录账号","bad");
+        modal("删除管理员",`确定删除 <b>${esc(a.username)}</b>？`,"",async()=>{ try{await api("admins/delete",{id:a.id});toast("已删除","ok");closeModal();loadAdmins();}catch(e){toast(e.message,"bad");} }); };
+      td.appendChild(del); tr.appendChild(td); b.appendChild(tr);
+    });
+  }catch(e){ $("#abody").innerHTML=`<tr><td colspan="4" class="empty">${esc(e.message)}</td></tr>`; }
+}
+function createAdminModal(){
+  modal("新增管理员","设置新管理员的登录用户名和密码",
+    `<div class="field"><label>用户名（≥3位）</label><input class="input" id="naUser" placeholder="用户名"></div>
+     <div class="field"><label>密码（≥6位）</label><input class="input" id="naPass" type="text" placeholder="密码"></div>`,
+    async()=>{ try{ await api("admins/create",{username:$("#naUser").value.trim(),password:$("#naPass").value});
+      toast("管理员已创建","ok"); closeModal(); loadAdmins(); }catch(e){ toast(e.message,"bad"); } });
+}
+
+/* ---------- modal ---------- */
+function modal(title,desc,fields,onok){
+  $("#modalBox").innerHTML=`<h3>${title}</h3><p>${desc}</p>${fields||""}
+    <div class="acts"><button class="btn ghost" id="mCancel">取消</button><button class="btn" id="mOk">确定</button></div>`;
+  $("#modalBg").classList.add("on");
+  $("#mCancel").onclick=closeModal; $("#mOk").onclick=onok;
+}
+function closeModal(){ $("#modalBg").classList.remove("on"); }
+$("#modalBg").addEventListener("click",e=>{ if(e.target===$("#modalBg")) closeModal(); });
+
+/* ---------- CSV ---------- */
+function exportCsv(name,rows){
+  if(!rows||!rows.length) return toast("没有可导出的数据","bad");
+  const cols=Object.keys(rows[0]);
+  const csv=[cols.join(",")].concat(rows.map(r=>cols.map(c=>{
+    let v=r[c]==null?"":String(r[c]); if(/[",\n]/.test(v)) v='"'+v.replace(/"/g,'""')+'"'; return v;
+  }).join(","))).join("\n");
+  const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+  const a=el("a"); a.href=URL.createObjectURL(blob); a.download=name+"_"+Date.now()+".csv"; a.click();
+}
+
+/* ---------- boot ---------- */
+if(TOKEN){ enterApp(); } else { $("#loginView").style.display="flex"; }
+</script>
+</body>
+</html>
