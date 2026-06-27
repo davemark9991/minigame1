@@ -346,6 +346,8 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/chat/list":       return adminChatList(db);
       case "/api/admin/chat/thread":     return adminChatThread(db, body);
       case "/api/admin/chat/send":       return adminChatSend(db, body, env);
+      case "/api/admin/chat/unread":     return adminChatUnread(db);
+      case "/api/admin/broadcast":       return adminBroadcast(db, body, env);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
@@ -529,13 +531,45 @@ async function adminChatThread(db: any, body: any): Promise<Response> {
   return jsonResp({ ok: true, messages: rows.results || [] });
 }
 
+// 玩家快捷回复键盘：玩家会看到一排可点的按钮，点了即把该文字发回；同时仍可自己打字。
+function buildReplyKeyboard(buttons: any): any {
+  if (!Array.isArray(buttons)) return undefined;
+  const labels = buttons.map((s: any) => String(s).slice(0, 40).trim()).filter(Boolean).slice(0, 8);
+  if (!labels.length) return undefined;
+  return { keyboard: labels.map((l: string) => [{ text: l }]), resize_keyboard: true, one_time_keyboard: false };
+}
+
 async function adminChatSend(db: any, body: any, env: any): Promise<Response> {
   const tg_id = parseInt(body.tg_id, 10);
   const text = String(body.text || "").slice(0, 2000);
   if (!tg_id || !text.trim()) return jsonResp({ ok: false, error: "bad_input" }, 400);
-  await sendMessage(env.TELEGRAM_BOT_TOKEN, tg_id, text);
+  await sendMessage(env.TELEGRAM_BOT_TOKEN, tg_id, text, buildReplyKeyboard(body.buttons));
   await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, text).run();
   return jsonResp({ ok: true });
+}
+
+async function adminChatUnread(db: any): Promise<Response> {
+  try {
+    const r: any = await db.prepare(`SELECT COUNT(*) c FROM messages WHERE direction='in' AND seen=0`).first();
+    return jsonResp({ ok: true, unread: r ? r.c : 0 });
+  } catch (e) { return jsonResp({ ok: true, unread: 0 }); }
+}
+
+// 广播：给所有未封禁玩家群发一条消息（可带快捷按钮）。
+async function adminBroadcast(db: any, body: any, env: any): Promise<Response> {
+  const text = String(body.text || "").slice(0, 2000);
+  if (!text.trim()) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const markup = buildReplyKeyboard(body.buttons);
+  let rows: any;
+  try { rows = await db.prepare(`SELECT tg_id FROM players WHERE status != 'banned'`).all(); }
+  catch (e) { rows = await db.prepare(`SELECT tg_id FROM players`).all(); }
+  const players = rows.results || [];
+  let sent = 0, failed = 0;
+  for (const p of players) {
+    try { await sendMessage(env.TELEGRAM_BOT_TOKEN, p.tg_id, text, markup); sent++; }
+    catch (e) { failed++; }
+  }
+  return jsonResp({ ok: true, sent, failed, total: players.length });
 }
 
 async function adminAdminsList(db: any): Promise<Response> {

@@ -243,11 +243,19 @@ function logout(){
 }
 $("#logoutBtn").addEventListener("click",logout);
 
+let unreadTimer=null;
 function enterApp(){
   $("#loginView").style.display="none";
   $("#appView").classList.add("on");
   $("#whoName").textContent = WHO || "admin";
   go("overview");
+  // 全局未读提醒：任何页面都会在菜单上显示红点
+  pollUnread();
+  if(unreadTimer) clearInterval(unreadTimer);
+  unreadTimer=setInterval(pollUnread, 12000);
+}
+async function pollUnread(){
+  try{ const d=await api("chat/unread"); updateNavUnread(parseInt(d.unread||0,10)); }catch(e){}
 }
 
 /* ---------- nav ---------- */
@@ -585,14 +593,18 @@ async function viewChat(){
         <div class="ph"><h3 id="chatTitle">← 选择一个会话</h3></div>
         <div id="chatThread" style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
           <div class="empty">玩家在 Telegram 里发给机器人的消息会出现在左侧，点开即可回复。</div></div>
-        <div id="chatComposer" style="display:none;border-top:1px solid var(--border);padding:12px;gap:8px;align-items:center">
-          <input class="input" id="chatInput" placeholder="输入回复…（Enter 发送）" style="flex:1">
-          <button class="btn" id="chatSend">发送</button>
+        <div id="chatComposer" style="display:none;flex-direction:column;border-top:1px solid var(--border);padding:12px;gap:8px">
+          <input class="input" id="chatButtons" placeholder="可选：给玩家的快捷回复按钮，逗号分隔（如 充值,提现,人工客服）" style="font-size:12.5px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="input" id="chatInput" placeholder="输入回复…（Enter 发送）" style="flex:1">
+            <button class="btn" id="chatSend">发送</button>
+          </div>
         </div>
       </div>
     </div>`;
   $("#chatRefresh").onclick=loadChatList;
   $("#chatSend").onclick=sendChat;
+  const bcBtn=el("button","btn sm","📢 群发广播"); bcBtn.onclick=broadcastModal; $("#toolbar").appendChild(bcBtn);
   await loadChatList();
   chatState.timer=setInterval(()=>{ loadChatList(); if(chatState.tgid) loadThread(); }, 4000);
 }
@@ -637,12 +649,25 @@ async function loadThread(){
     box.scrollTop=box.scrollHeight;
   }catch(e){}
 }
+function parseButtons(raw){ raw=(raw||"").trim(); return raw?raw.split(/[,，]/).map(s=>s.trim()).filter(Boolean).slice(0,8):undefined; }
 async function sendChat(){
   const inp=$("#chatInput"); if(!inp) return; const text=inp.value.trim();
   if(!text||!chatState.tgid) return;
+  const buttons=parseButtons($("#chatButtons")&&$("#chatButtons").value);
   inp.value="";
-  try{ await api("chat/send",{tg_id:chatState.tgid,text}); await loadThread(); }
+  try{ await api("chat/send",{tg_id:chatState.tgid,text,buttons}); await loadThread(); }
   catch(e){ toast(e.message,"bad"); inp.value=text; }
+}
+function broadcastModal(){
+  modal("📢 群发广播","向所有未封禁玩家发送一条消息（可附带玩家快捷按钮）",
+    `<div class="field"><label>消息内容</label><textarea class="input" id="bcText" rows="3" style="resize:vertical;width:100%"></textarea></div>
+     <div class="field"><label>快捷按钮（可选，逗号分隔）</label><input class="input" id="bcBtns" placeholder="如 立即游戏,联系客服"></div>`,
+    async()=>{
+      const text=($("#bcText").value||"").trim(); if(!text) return toast("请输入内容","bad");
+      try{ const d=await api("broadcast",{text,buttons:parseButtons($("#bcBtns").value)});
+        toast(`已群发 ${d.sent} 人${d.failed?`（失败 ${d.failed}）`:""}`,"ok"); closeModal(); }
+      catch(e){ toast(e.message,"bad"); }
+    });
 }
 
 /* ---------- modal ---------- */
