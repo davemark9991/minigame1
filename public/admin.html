@@ -248,6 +248,14 @@ const $ = (s,r=document)=>r.querySelector(s);
 const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 const fmt = n => (n==null?"—":Number(n).toLocaleString("en-US"));
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+// 服务器存的是 UTC（'YYYY-MM-DD HH:MM:SS'）；显示时转成本设备所在时区的本地时间
+function fmtTime(s){
+  if(!s) return "";
+  const d = new Date(String(s).replace(" ","T")+"Z");
+  if(isNaN(d.getTime())) return esc(s);
+  const p = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 function toast(msg, kind){
   const t = el("div","toast "+(kind||""),esc(msg));
@@ -406,8 +414,8 @@ async function playerHistory(p){
     const d=await api("transactions",{q:String(p.tg_id),limit:100});
     const rows=d.transactions.filter(t=>String(t.tg_id)===String(p.tg_id));
     if(!rows.length){ $("#phBody").innerHTML='<div class="empty">暂无记录</div>'; return; }
-    $("#phBody").innerHTML=`<table style="width:100%"><thead><tr><th>时间(UTC)</th><th>类型</th><th>变动</th><th>余额</th></tr></thead><tbody>${
-      rows.map(t=>`<tr><td class="mono" style="color:var(--muted)">${esc(t.created_at)}</td>
+    $("#phBody").innerHTML=`<table style="width:100%"><thead><tr><th>时间</th><th>类型</th><th>变动</th><th>余额</th></tr></thead><tbody>${
+      rows.map(t=>`<tr><td class="mono" style="color:var(--muted)">${fmtTime(t.created_at)}</td>
         <td><span class="pill type">${TYPE_LABEL[t.type]||esc(t.type)}</span></td>
         <td class="mono ${t.amount>=0?'pos':'neg'}">${t.amount>=0?'+':''}${fmt(t.amount)}</td>
         <td class="mono">${fmt(t.balance_after)}</td></tr>`).join("")}</tbody></table>`;
@@ -426,7 +434,7 @@ async function viewTx(){
     <input class="input date" id="tfrom" type="date"><input class="input date" id="tto" type="date">
     </div></div>
     <div class="tbl-wrap"><table><thead><tr>
-    <th>#</th><th>时间(UTC)</th><th>昵称</th><th>Telegram ID</th><th>类型</th><th>变动</th><th>余额</th><th>备注</th>
+    <th>#</th><th>时间</th><th>昵称</th><th>Telegram ID</th><th>类型</th><th>变动</th><th>余额</th><th>备注</th>
     </tr></thead><tbody id="tbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody></table></div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 16px;border-top:1px solid var(--border)">
       <span id="pageInfo" style="color:var(--muted);font-size:12.5px"></span>
@@ -461,7 +469,7 @@ function renderTx(rows){
     const cls=t.amount>=0?"pos":"neg", sgn=t.amount>=0?"+":"";
     const tr=el("tr");
     tr.innerHTML=`<td class="mono" style="color:var(--faint)">${t.id}</td>
-      <td class="mono" style="color:var(--muted)">${esc(t.created_at)}</td>
+      <td class="mono" style="color:var(--muted)">${fmtTime(t.created_at)}</td>
       <td>${esc(t.username)||"<span style='color:var(--faint)'>—</span>"}</td>
       <td class="mono">${t.tg_id}</td>
       <td><span class="pill type">${TYPE_LABEL[t.type]||esc(t.type)}</span></td>
@@ -576,7 +584,7 @@ async function viewAdmins(){
   $("#toolbar").append(pwBtn,addBtn);
   const panel=el("div","panel");
   panel.innerHTML=`<div class="ph"><h3>管理员账号</h3><span style="color:var(--muted);font-size:12px">每个账号独立用户名+密码登录</span></div>
-    <div class="tbl-wrap"><table><thead><tr><th>ID</th><th>用户名</th><th>创建时间(UTC)</th><th>操作</th></tr></thead>
+    <div class="tbl-wrap"><table><thead><tr><th>ID</th><th>用户名</th><th>创建时间</th><th>操作</th></tr></thead>
     <tbody id="abody"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody></table></div>`;
   $("#content").innerHTML=""; $("#content").appendChild(panel);
   loadAdmins();
@@ -588,7 +596,7 @@ async function loadAdmins(){
     d.admins.forEach(a=>{
       const tr=el("tr");
       tr.innerHTML=`<td class="mono" style="color:var(--faint)">${a.id}</td><td><b>${esc(a.username)}</b>${a.username===WHO?' <span class="pill type">当前</span>':''}</td>
-        <td class="mono" style="color:var(--muted)">${esc(a.created_at)}</td>`;
+        <td class="mono" style="color:var(--muted)">${fmtTime(a.created_at)}</td>`;
       const td=el("td"); const wrap=el("div","rowact");
       const pwd=el("button","btn ghost sm","改密码");
       pwd.onclick=()=> (a.username===WHO ? changeOwnPwdModal() : resetPwdModal(a));
@@ -694,7 +702,7 @@ async function loadThread(){
       const out=m.direction==='out';
       return `<div style="align-self:${out?'flex-end':'flex-start'};max-width:75%">
         <div style="background:${out?'var(--accent)':'var(--panel2)'};color:${out?'#fff':'var(--text)'};border:1px solid ${out?'transparent':'var(--border2)'};padding:8px 12px;border-radius:12px;font-size:13px;white-space:pre-wrap;word-break:break-word">${esc(m.text)}</div>
-        <div style="color:var(--faint);font-size:10.5px;margin-top:3px;text-align:${out?'right':'left'}">${out?'我':'玩家'} · ${esc(m.created_at)}</div>
+        <div style="color:var(--faint);font-size:10.5px;margin-top:3px;text-align:${out?'right':'left'}">${out?'我':'玩家'} · ${fmtTime(m.created_at)}</div>
       </div>`;
     }).join("");
     box.scrollTop=box.scrollHeight;
@@ -733,16 +741,16 @@ async function broadcastModal(){
   $("#modalBox").style.width="480px";
   $("#modalBox").innerHTML=`
     <h3>📢 群发广播</h3>
-    <p>发给所有未封禁玩家。可附带玩家快捷按钮，或定时发送（时间按 UTC）。</p>
+    <p>发给所有未封禁玩家。可附带玩家快捷按钮，或定时发送（按你设备的本地时间）。</p>
     <div class="field"><label>消息内容</label><textarea class="input" id="bcText" rows="3" style="resize:vertical;width:100%"></textarea></div>
     <div class="field"><label>快捷按钮（可选，逗号分隔）</label><input class="input" id="bcBtns" placeholder="如 立即游戏,联系客服"></div>
     <div class="field"><label>定时发送（可选，留空＝立即）</label><input class="input" id="bcWhen" type="datetime-local"></div>
     <div id="bcProgress" style="font-size:12.5px;color:var(--muted);min-height:16px;margin:4px 0"></div>
     <div class="acts"><button class="btn ghost" id="bcCancel">关闭</button><button class="btn" id="bcGo">发送</button></div>
     ${scheduled.length?`<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
-      <div style="color:var(--muted);font-size:12px;margin-bottom:6px">已排期（UTC）</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:6px">已排期</div>
       ${scheduled.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;padding:3px 0">
-        <span style="color:${s.sent?'var(--faint)':'var(--text)'}">${esc(s.send_at)} · ${esc((s.text||'').slice(0,22))}${s.sent?'（已发）':''}</span>
+        <span style="color:${s.sent?'var(--faint)':'var(--text)'}">${fmtTime(s.send_at)} · ${esc((s.text||'').slice(0,22))}${s.sent?'（已发）':''}</span>
         ${s.sent?'':`<button class="btn neg sm bcCancelSched" data-id="${s.id}">取消</button>`}</div>`).join("")}
     </div>`:''}`;
   $("#modalBg").classList.add("on");
