@@ -369,6 +369,7 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/chat/send":       return adminChatSend(db, body, env);
       case "/api/admin/chat/photo":      return adminChatPhoto(db, body, env);
       case "/api/admin/chat/media":      return adminChatMedia(body, env);
+      case "/api/admin/chat/delete":     return adminChatDelete(db, body, env);
       case "/api/admin/chat/unread":     return adminChatUnread(db);
       case "/api/admin/broadcast":       return adminBroadcast(db, body, env);
       case "/api/admin/broadcast/schedule":     return adminBroadcastSchedule(db, body);
@@ -579,8 +580,8 @@ async function adminChatSend(db: any, body: any, env: any): Promise<Response> {
   if (!tg_id || !text.trim()) return jsonResp({ ok: false, error: "bad_input" }, 400);
   let markup = buildReplyKeyboard(body.buttons);
   if (!markup && body.remove_keyboard) markup = { remove_keyboard: true };   // 移除玩家键盘
-  await sendMessage(env.TELEGRAM_BOT_TOKEN, tg_id, text, markup);
-  await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, text).run();
+  const sentId = await sendMessage(env.TELEGRAM_BOT_TOKEN, tg_id, text, markup);
+  await storeMsg(db, { tg_id, direction: "out", text, tg_msg_id: sentId });
   return jsonResp({ ok: true });
 }
 
@@ -592,12 +593,16 @@ async function adminChatUnread(db: any): Promise<Response> {
 }
 
 // 发图片（充值二维码）。photo 可为图片 URL。
-async function sendPhoto(token: string, chatId: number, photo: string, caption?: string): Promise<void> {
-  if (!token || !photo) return;
-  await fetch("https://api.telegram.org/bot" + token + "/sendPhoto", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, photo, caption: caption || "" })
-  });
+async function sendPhoto(token: string, chatId: number, photo: string, caption?: string): Promise<number | null> {
+  if (!token || !photo) return null;
+  try {
+    const r = await fetch("https://api.telegram.org/bot" + token + "/sendPhoto", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, photo, caption: caption || "" })
+    });
+    const j: any = await r.json();
+    return (j.ok && j.result) ? j.result.message_id : null;
+  } catch (e) { return null; }
 }
 
 async function adminChatPhoto(db: any, body: any, env: any): Promise<Response> {
@@ -607,8 +612,8 @@ async function adminChatPhoto(db: any, body: any, env: any): Promise<Response> {
   const url = String(body.photo_url || cfg.qr_url || "").trim();
   if (!url) return jsonResp({ ok: false, error: "no_qr", message: "未配置充值二维码图片 URL" }, 400);
   const caption = String(body.caption || "扫码充值，付款后请把截图发给客服").slice(0, 500);
-  await sendPhoto(env.TELEGRAM_BOT_TOKEN, tg_id, url, caption);
-  await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, "🖼️ [充值二维码] " + caption).run();
+  const qrId = await sendPhoto(env.TELEGRAM_BOT_TOKEN, tg_id, url, caption);
+  await storeMsg(db, { tg_id, direction: "out", text: "🖼️ [充值二维码] " + caption, tg_msg_id: qrId });
   return jsonResp({ ok: true });
 }
 
@@ -662,13 +667,21 @@ async function adminChatUpload(request: Request, env: any, db: any): Promise<Res
   else if (res.video) mid = res.video.file_id;
   else if (res.voice) mid = res.voice.file_id;
   else if (res.document) mid = res.document.file_id;
-  try {
-    await db.prepare(`INSERT INTO messages (tg_id, direction, text, media_type, media_id) VALUES (?, 'out', ?, ?, ?)`)
-      .bind(tg_id, m.label + (caption ? (" " + caption) : ""), kind, mid).run();
-  } catch (e) {
-    await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, m.label).run();
-  }
+  await storeMsg(db, { tg_id, direction: "out", text: m.label + (caption ? (" " + caption) : ""), media_type: kind, media_id: mid, tg_msg_id: (res.message_id || null) });
   return jsonResp({ ok: true });
+}
+
+// 撤回/删除一条消息：双向删除（后台行 + 玩家 Telegram 里那条，48 小时内可删）
+async function adminChatDelete(db: any, body: any, env: any): Promise<Response> {
+  const id = parseInt(body.id, 10);
+  if (!id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  let recalled = false;
+  try {
+    const m: any = await db.prepare(`SELECT tg_id, tg_msg_id FROM messages WHERE id = ?`).bind(id).first();
+    if (m && m.tg_msg_id) recalled = await deleteTgMessage(env.TELEGRAM_BOT_TOKEN, m.tg_id, m.tg_msg_id);
+  } catch (e) {}
+  await db.prepare(`DELETE FROM messages WHERE id = ?`).bind(id).run();
+  return jsonResp({ ok: true, recalled });
 }
 
 // 广播（分批）：每次发一批，返回 nextOffset 让前端循环到 done。
@@ -814,18 +827,15 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
         }
       } else if (text.trim()) {
         // 普通文字消息 -> 存入客服会话，供后台回复
-        try {
-          await db.prepare(`INSERT INTO messages (tg_id, username, direction, text) VALUES (?, ?, 'in', ?)`)
-            .bind(userId, username, text.slice(0, 2000)).run();
-        } catch (e) { /* messages 表尚未建则忽略 */ }
+        await storeMsg(db, { tg_id: userId, username, direction: "in", text: text.slice(0, 2000), tg_msg_id: msg.message_id });
         // 关键词自动回复
         try {
           const cfg = await getConfig(db);
           const low = text.toLowerCase();
           const hit = (cfg.autoreply || []).find((r: any) => r.kw && low.includes(String(r.kw).toLowerCase()));
           if (hit) {
-            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, hit.reply);
-            await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(userId, hit.reply).run();
+            const arId = await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, hit.reply);
+            await storeMsg(db, { tg_id: userId, direction: "out", text: hit.reply, tg_msg_id: arId });
           }
         } catch (e) {}
       } else {
@@ -839,10 +849,7 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
         else if (msg.audio) { mtype = "voice"; mid = msg.audio.file_id; label = "🎵 [音频]"; }
         if (mtype) {
           const cap = (msg.caption || "").slice(0, 1000);
-          try {
-            await db.prepare(`INSERT INTO messages (tg_id, username, direction, text, media_type, media_id) VALUES (?, ?, 'in', ?, ?, ?)`)
-              .bind(userId, username, label + (cap ? (" " + cap) : ""), mtype, mid).run();
-          } catch (e) { /* media 列尚未建则忽略 */ }
+          await storeMsg(db, { tg_id: userId, username, direction: "in", text: label + (cap ? (" " + cap) : ""), media_type: mtype, media_id: mid, tg_msg_id: msg.message_id });
         }
       }
     }
@@ -852,13 +859,41 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
   return new Response("OK");
 }
 
-async function sendMessage(token: string, chatId: number, text: string, replyMarkup?: any): Promise<void> {
-  if (!token) return;
+async function sendMessage(token: string, chatId: number, text: string, replyMarkup?: any): Promise<number | null> {
+  if (!token) return null;
   const body: any = { chat_id: chatId, text: text };
   if (replyMarkup) body.reply_markup = replyMarkup;
-  await fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  try {
+    const r = await fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+    });
+    const j: any = await r.json();
+    return (j.ok && j.result) ? j.result.message_id : null;
+  } catch (e) { return null; }
+}
+
+// 删除一条 Telegram 消息（私聊里 48 小时内可删双方消息）
+async function deleteTgMessage(token: string, chatId: number, msgId: number): Promise<boolean> {
+  if (!token || !msgId) return false;
+  try {
+    const r = await fetch("https://api.telegram.org/bot" + token + "/deleteMessage", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: msgId })
+    });
+    const j: any = await r.json();
+    return !!j.ok;
+  } catch (e) { return false; }
+}
+
+// 统一写入一条会话消息（容忍老库缺列：缺 media/tg_msg_id 时回退最小插入）
+async function storeMsg(db: any, m: any): Promise<void> {
+  try {
+    await db.prepare(`INSERT INTO messages (tg_id, username, direction, text, media_type, media_id, tg_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .bind(m.tg_id, m.username || null, m.direction, m.text, m.media_type || null, m.media_id || null, m.tg_msg_id || null).run();
+  } catch (e) {
+    try {
+      await db.prepare(`INSERT INTO messages (tg_id, username, direction, text) VALUES (?, ?, ?, ?)`)
+        .bind(m.tg_id, m.username || null, m.direction, m.text).run();
+    } catch (e2) {}
+  }
 }

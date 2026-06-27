@@ -734,12 +734,19 @@ async function loadThread(){
       }
       return `<div style="align-self:${out?'flex-end':'flex-start'};max-width:75%">
         <div style="background:${out?'var(--accent)':'var(--panel2)'};color:${out?'#fff':'var(--text)'};border:1px solid ${out?'transparent':'var(--border2)'};padding:8px 12px;border-radius:12px;font-size:13px;white-space:pre-wrap;word-break:break-word">${inner}</div>
-        <div style="color:var(--faint);font-size:10.5px;margin-top:3px;text-align:${out?'right':'left'}">${out?'我':'玩家'} · ${fmtTime(m.created_at)}</div>
+        <div style="color:var(--faint);font-size:10.5px;margin-top:3px;text-align:${out?'right':'left'}">${out?'我':'玩家'} · ${fmtTime(m.created_at)} <span class="msgdel" data-id="${m.id}" style="cursor:pointer;color:var(--neg);margin-left:6px">撤回</span></div>
       </div>`;
     }).join("");
     hydrateMedia();
+    document.querySelectorAll('#chatThread .msgdel').forEach(s=>s.onclick=()=>recallMsg(+s.dataset.id));
     box.scrollTop=box.scrollHeight;
   }catch(e){}
+}
+function recallMsg(id){
+  modal("撤回 / 删除消息","将<b>同时</b>从后台和玩家的 Telegram 里删除这条消息。<br>（超过 48 小时玩家端可能撤不回，但后台仍会删）","",
+    async()=>{ try{ const d=await api("chat/delete",{id});
+      toast(d.recalled?"已双向撤回 ✅":"已删除（玩家端未撤回，可能超时）","ok");
+      closeModal(); loadThread(); loadChatList(); }catch(e){ toast(e.message,"bad"); } });
 }
 async function uploadMedia(e){
   const f=e.target.files&&e.target.files[0]; e.target.value="";

@@ -47,12 +47,14 @@ CREATE TABLE IF NOT EXISTS messages (
   text       TEXT NOT NULL,
   media_type TEXT,                              -- photo / voice / video / document（纯文字为空）
   media_id   TEXT,                              -- Telegram file_id
+  tg_msg_id  INTEGER,                            -- Telegram 消息 id（用于撤回/双向删除）
   seen       INTEGER NOT NULL DEFAULT 0,        -- 进站消息管理员是否已读
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
--- 老库（已有 messages 表）需补两列：
+-- 老库（已有 messages 表）需补列：
 -- ALTER TABLE messages ADD COLUMN media_type TEXT;
 -- ALTER TABLE messages ADD COLUMN media_id TEXT;
+-- ALTER TABLE messages ADD COLUMN tg_msg_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_msg_tg   ON messages(tg_id);
 CREATE INDEX IF NOT EXISTS idx_msg_seen ON messages(direction, seen);
 
