@@ -1,0 +1,14 @@
+{
+  "name": "MINI GAME 控制台",
+  "short_name": "MG 控制台",
+  "description": "霓虹游戏厅 · 管理后台",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0c12",
+  "theme_color": "#0a0c12",
+  "icons": [
+    { "src": "/icon-admin.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

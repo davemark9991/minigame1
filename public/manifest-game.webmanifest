@@ -1,0 +1,14 @@
+{
+  "name": "霓虹游戏厅",
+  "short_name": "霓虹游戏",
+  "description": "霓虹抽奖游戏大厅",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0c12",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    { "src": "/icon-game.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

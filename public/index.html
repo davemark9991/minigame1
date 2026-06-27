@@ -2,8 +2,16 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>🎰 NEON CASINO · 游戏大厅</title>
+<link rel="manifest" href="/manifest-game.webmanifest" />
+<meta name="theme-color" content="#1a1a2e" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="霓虹游戏" />
+<link rel="apple-touch-icon" href="/icon-game.svg" />
+<link rel="icon" href="/icon-game.svg" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   /* ============== 主题：暗黑赛博朋克 / 高档娱乐城 ============== */
@@ -616,6 +624,7 @@
   // ---------- 启动 ----------
   if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
   renderUser(); renderStats(); loadProfile();
+  if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js").catch(function () {}); }
 })();
 </script>
 </body>

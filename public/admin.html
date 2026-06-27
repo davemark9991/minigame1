@@ -2,9 +2,17 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <meta name="robots" content="noindex, nofollow" />
 <title>MINI GAME · 控制台</title>
+<link rel="manifest" href="/manifest-admin.webmanifest" />
+<meta name="theme-color" content="#0a0c12" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="MG 控制台" />
+<link rel="apple-touch-icon" href="/icon-admin.svg" />
+<link rel="icon" href="/icon-admin.svg" />
 <style>
   :root{
     --bg:#0a0c12; --bg2:#0e1118; --panel:#12161f; --panel2:#161b26;
@@ -128,13 +136,35 @@
   .modal h3{margin:0 0 4px;font-size:15px}
   .modal p{color:var(--muted);font-size:12.5px;margin:0 0 16px}
   .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+  /* ---------- 手机版底部标签栏 ---------- */
+  .botnav{display:none}
+  .hdr-logout{display:none}
   @media(max-width:760px){
     .app.on{grid-template-columns:1fr}
-    .side{position:fixed;z-index:40;left:0;top:0;transform:translateX(-100%);transition:transform .2s;width:228px}
-    .side.show{transform:none}
-    .main{padding:18px 16px}
-    .menu-btn{display:inline-flex!important}
+    .side{display:none!important}
+    .menu-btn{display:none!important}
+    .main{padding:14px 13px calc(70px + env(safe-area-inset-bottom)) 13px}
+    .head{margin-bottom:16px}
+    .head h1{font-size:18px}
+    .cards{grid-template-columns:1fr 1fr;gap:12px}
+    .filters .input.search{width:100%;max-width:none}
+    .hdr-logout{display:inline-flex}
+    .botnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;
+      background:rgba(14,17,24,.96);backdrop-filter:blur(8px);border-top:1px solid var(--border);
+      padding-bottom:env(safe-area-inset-bottom)}
+    .botnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 1px;
+      color:var(--muted);font-size:10px;position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .botnav a b{font-size:19px;line-height:1;font-weight:400}
+    .botnav a.active{color:var(--accent)}
+    .botnav a i{position:absolute;top:5px;left:calc(50% + 9px);width:8px;height:8px;border-radius:50%;background:var(--neg);display:none}
+    .botnav a i.on{display:block}
+    /* 客服聊天：手机改单栏，列表/会话切换 */
+    #chatWrap{grid-template-columns:1fr!important;height:calc(100vh - 190px)!important}
+    #chatWrap.showthread #chatListPanel{display:none}
+    #chatWrap:not(.showthread) #chatThreadPanel{display:none}
+    .chat-back{display:inline-flex!important}
   }
+  .chat-back{display:none}
   .menu-btn{display:none}
 </style>
 </head>
@@ -181,15 +211,27 @@
 
   <main class="main">
     <div class="head">
-      <div>
+      <div style="display:flex;align-items:center;gap:10px">
         <button class="btn ghost sm menu-btn" id="menuBtn">☰</button>
-        <h1 id="pageTitle">总览</h1>
-        <div class="sub" id="pageSub">线上数据 · 实时</div>
+        <div>
+          <h1 id="pageTitle">总览</h1>
+          <div class="sub" id="pageSub">线上数据 · 实时</div>
+        </div>
+        <button class="btn ghost sm hdr-logout" id="hdrLogout" style="margin-left:auto">🚪 退出</button>
       </div>
       <div class="toolbar" id="toolbar"></div>
     </div>
     <div id="content"></div>
   </main>
+
+  <nav class="botnav" id="botnav">
+    <a data-view="overview"><b>📊</b><span>总览</span></a>
+    <a data-view="users"><b>👥</b><span>玩家</span></a>
+    <a data-view="chat"><b>💬</b><span>客服</span><i id="botUnread"></i></a>
+    <a data-view="tx"><b>🧾</b><span>流水</span></a>
+    <a data-view="settings"><b>🎛️</b><span>设置</span></a>
+    <a data-view="admins"><b>🔐</b><span>管理</span></a>
+  </nav>
 </div>
 
 <div id="toast"></div>
@@ -242,6 +284,7 @@ function logout(){
   $("#appView").classList.remove("on"); $("#loginView").style.display="flex";
 }
 $("#logoutBtn").addEventListener("click",logout);
+$("#hdrLogout").addEventListener("click",logout);
 
 let unreadTimer=null;
 function enterApp(){
@@ -262,12 +305,12 @@ async function pollUnread(){
 const TITLES = {overview:["总览","线上数据 · 实时"],users:["玩家管理","查看 / 调整线上真实玩家"],
   tx:["交易流水","所有下注与积分变动记录"],chat:["客服聊天","玩家消息 · 实时回复"],
   settings:["游戏设置","下注额 + 奖品表，改动实时生效"],admins:["管理员","账号增删（各自独立登录）"]};
-document.querySelectorAll(".nav[data-view]").forEach(n=>n.addEventListener("click",()=>go(n.dataset.view)));
+document.querySelectorAll(".nav[data-view], .botnav a[data-view]").forEach(n=>n.addEventListener("click",()=>go(n.dataset.view)));
 $("#menuBtn").addEventListener("click",()=>$("#side").classList.toggle("show"));
 
 function go(view){
   clearChatTimer();
-  document.querySelectorAll(".nav[data-view]").forEach(n=>n.classList.toggle("active",n.dataset.view===view));
+  document.querySelectorAll(".nav[data-view], .botnav a[data-view]").forEach(n=>n.classList.toggle("active",n.dataset.view===view));
   $("#pageTitle").textContent=TITLES[view][0]; $("#pageSub").textContent=TITLES[view][1];
   $("#toolbar").innerHTML=""; $("#content").innerHTML='<div class="empty">加载中…</div>';
   $("#side").classList.remove("show");
@@ -580,17 +623,17 @@ function resetPwdModal(a){
 /* ---------- 客服聊天 ---------- */
 let chatState = { tgid:null, timer:null };
 function clearChatTimer(){ if(chatState.timer){ clearInterval(chatState.timer); chatState.timer=null; } }
-function updateNavUnread(n){ const b=$("#navUnread"); if(b){ b.textContent=n>0?n:''; b.style.display=n>0?'inline-block':'none'; } }
+function updateNavUnread(n){ const b=$("#navUnread"); if(b){ b.textContent=n>0?n:''; b.style.display=n>0?'inline-block':'none'; } const dot=$("#botUnread"); if(dot){ dot.classList.toggle("on",n>0); } }
 async function viewChat(){
   chatState.tgid=null;
   $("#content").innerHTML=`
-    <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;height:calc(100vh - 150px);min-height:420px">
-      <div class="panel" style="display:flex;flex-direction:column;overflow:hidden">
+    <div id="chatWrap" style="display:grid;grid-template-columns:300px 1fr;gap:16px;height:calc(100vh - 150px);min-height:420px">
+      <div class="panel" id="chatListPanel" style="display:flex;flex-direction:column;overflow:hidden">
         <div class="ph"><h3>会话</h3><button class="btn ghost sm" id="chatRefresh">刷新</button></div>
         <div id="chatList" style="overflow:auto;flex:1"><div class="empty">加载中…</div></div>
       </div>
-      <div class="panel" style="display:flex;flex-direction:column;overflow:hidden">
-        <div class="ph"><h3 id="chatTitle">← 选择一个会话</h3><span id="chatActions" style="display:flex;gap:6px"></span></div>
+      <div class="panel" id="chatThreadPanel" style="display:flex;flex-direction:column;overflow:hidden">
+        <div class="ph"><button class="btn ghost sm chat-back" id="chatBack">←</button><h3 id="chatTitle">← 选择一个会话</h3><span id="chatActions" style="display:flex;gap:6px"></span></div>
         <div id="chatThread" style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
           <div class="empty">玩家在 Telegram 里发给机器人的消息会出现在左侧，点开即可回复。</div></div>
         <div id="chatComposer" style="display:none;flex-direction:column;border-top:1px solid var(--border);padding:12px;gap:8px">
@@ -605,6 +648,7 @@ async function viewChat(){
     </div>`;
   $("#chatRefresh").onclick=loadChatList;
   $("#chatSend").onclick=sendChat;
+  $("#chatBack").onclick=()=>{ const w=$("#chatWrap"); if(w) w.classList.remove("showthread"); };
   const cfgBtn=el("button","btn ghost sm","⚙️ 自动回复/配置"); cfgBtn.onclick=configModal; $("#toolbar").appendChild(cfgBtn);
   const bcBtn=el("button","btn sm","📢 群发广播"); bcBtn.onclick=broadcastModal; $("#toolbar").appendChild(bcBtn);
   await loadChatList();
@@ -631,6 +675,7 @@ async function loadChatList(){
 }
 async function openThread(tgid,name){
   chatState.tgid=String(tgid); chatState.name=name;
+  const w=$("#chatWrap"); if(w) w.classList.add("showthread");
   $("#chatTitle").textContent=`${name} · ID ${tgid}`;
   const acts=$("#chatActions");
   if(acts){ acts.innerHTML=`<button class="btn pos sm" id="chatCharge">➕ 加分/充值</button><button class="btn ghost sm" id="chatQR">💳 二维码</button>`;
@@ -785,6 +830,9 @@ function exportCsv(name,rows){
   const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
   const a=el("a"); a.href=URL.createObjectURL(blob); a.download=name+"_"+Date.now()+".csv"; a.click();
 }
+
+/* ---------- PWA service worker ---------- */
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("/sw.js").catch(()=>{}); }
 
 /* ---------- boot ---------- */
 if(TOKEN){ enterApp(); } else { $("#loginView").style.display="flex"; }
