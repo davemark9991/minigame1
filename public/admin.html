@@ -590,7 +590,7 @@ async function viewChat(){
         <div id="chatList" style="overflow:auto;flex:1"><div class="empty">加载中…</div></div>
       </div>
       <div class="panel" style="display:flex;flex-direction:column;overflow:hidden">
-        <div class="ph"><h3 id="chatTitle">← 选择一个会话</h3></div>
+        <div class="ph"><h3 id="chatTitle">← 选择一个会话</h3><span id="chatActions" style="display:flex;gap:6px"></span></div>
         <div id="chatThread" style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
           <div class="empty">玩家在 Telegram 里发给机器人的消息会出现在左侧，点开即可回复。</div></div>
         <div id="chatComposer" style="display:none;flex-direction:column;border-top:1px solid var(--border);padding:12px;gap:8px">
@@ -599,11 +599,13 @@ async function viewChat(){
             <input class="input" id="chatInput" placeholder="输入回复…（Enter 发送）" style="flex:1">
             <button class="btn" id="chatSend">发送</button>
           </div>
+          <label style="font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="chatRmKb" style="vertical-align:-1px"> 发送后移除玩家键盘（需清空上面的快捷按钮）</label>
         </div>
       </div>
     </div>`;
   $("#chatRefresh").onclick=loadChatList;
   $("#chatSend").onclick=sendChat;
+  const cfgBtn=el("button","btn ghost sm","⚙️ 自动回复/配置"); cfgBtn.onclick=configModal; $("#toolbar").appendChild(cfgBtn);
   const bcBtn=el("button","btn sm","📢 群发广播"); bcBtn.onclick=broadcastModal; $("#toolbar").appendChild(bcBtn);
   await loadChatList();
   chatState.timer=setInterval(()=>{ loadChatList(); if(chatState.tgid) loadThread(); }, 4000);
@@ -628,8 +630,12 @@ async function loadChatList(){
   }catch(e){ const box=$("#chatList"); if(box) box.innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
 }
 async function openThread(tgid,name){
-  chatState.tgid=String(tgid);
+  chatState.tgid=String(tgid); chatState.name=name;
   $("#chatTitle").textContent=`${name} · ID ${tgid}`;
+  const acts=$("#chatActions");
+  if(acts){ acts.innerHTML=`<button class="btn pos sm" id="chatCharge">➕ 加分/充值</button><button class="btn ghost sm" id="chatQR">💳 二维码</button>`;
+    $("#chatCharge").onclick=()=>chargeModal(chatState.tgid,name);
+    $("#chatQR").onclick=()=>sendQR(chatState.tgid); }
   $("#chatComposer").style.display="flex";
   $("#chatInput").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); sendChat(); } };
   await loadThread(); loadChatList();
@@ -654,20 +660,108 @@ async function sendChat(){
   const inp=$("#chatInput"); if(!inp) return; const text=inp.value.trim();
   if(!text||!chatState.tgid) return;
   const buttons=parseButtons($("#chatButtons")&&$("#chatButtons").value);
+  const remove_keyboard=$("#chatRmKb")&&$("#chatRmKb").checked;
   inp.value="";
-  try{ await api("chat/send",{tg_id:chatState.tgid,text,buttons}); await loadThread(); }
+  try{ await api("chat/send",{tg_id:chatState.tgid,text,buttons,remove_keyboard}); await loadThread(); }
   catch(e){ toast(e.message,"bad"); inp.value=text; }
 }
-function broadcastModal(){
-  modal("📢 群发广播","向所有未封禁玩家发送一条消息（可附带玩家快捷按钮）",
-    `<div class="field"><label>消息内容</label><textarea class="input" id="bcText" rows="3" style="resize:vertical;width:100%"></textarea></div>
-     <div class="field"><label>快捷按钮（可选，逗号分隔）</label><input class="input" id="bcBtns" placeholder="如 立即游戏,联系客服"></div>`,
+function chargeModal(tgid,name){
+  modal("给玩家加分 / 充值",`玩家 <b>${esc(name)}</b> · ID ${tgid}`,
+    `<div class="field"><label>加分数量</label><input class="input" id="chgAmt" type="number" min="1" value="100"></div>
+     <div class="field"><label style="cursor:pointer"><input type="checkbox" id="chgNotify" checked style="vertical-align:-2px"> 通知玩家（聊天里发一条到账提示）</label></div>`,
     async()=>{
-      const text=($("#bcText").value||"").trim(); if(!text) return toast("请输入内容","bad");
-      try{ const d=await api("broadcast",{text,buttons:parseButtons($("#bcBtns").value)});
-        toast(`已群发 ${d.sent} 人${d.failed?`（失败 ${d.failed}）`:""}`,"ok"); closeModal(); }
-      catch(e){ toast(e.message,"bad"); }
+      const amt=Math.abs(parseInt($("#chgAmt").value,10)||0); if(!amt) return toast("请输入数量","bad");
+      const notify=$("#chgNotify").checked;
+      try{ const d=await api("adjust",{tg_id:tgid,amount:amt,note:"客服充值"});
+        if(notify) await api("chat/send",{tg_id:tgid,text:`💰 已为您充值 ${amt} 分，当前余额 ${d.balance} 分，祝您游戏愉快！`});
+        toast("已加分 "+amt,"ok"); closeModal(); loadThread();
+      }catch(e){ toast(e.message,"bad"); }
     });
+}
+async function sendQR(tgid){
+  try{ await api("chat/photo",{tg_id:tgid}); toast("已发送充值二维码","ok"); loadThread(); }
+  catch(e){ toast(e.message,"bad"); }
+}
+async function broadcastModal(){
+  let scheduled=[];
+  try{ scheduled=(await api("broadcast/scheduled")).list||[]; }catch(e){}
+  $("#modalBox").style.width="480px";
+  $("#modalBox").innerHTML=`
+    <h3>📢 群发广播</h3>
+    <p>发给所有未封禁玩家。可附带玩家快捷按钮，或定时发送（时间按 UTC）。</p>
+    <div class="field"><label>消息内容</label><textarea class="input" id="bcText" rows="3" style="resize:vertical;width:100%"></textarea></div>
+    <div class="field"><label>快捷按钮（可选，逗号分隔）</label><input class="input" id="bcBtns" placeholder="如 立即游戏,联系客服"></div>
+    <div class="field"><label>定时发送（可选，留空＝立即）</label><input class="input" id="bcWhen" type="datetime-local"></div>
+    <div id="bcProgress" style="font-size:12.5px;color:var(--muted);min-height:16px;margin:4px 0"></div>
+    <div class="acts"><button class="btn ghost" id="bcCancel">关闭</button><button class="btn" id="bcGo">发送</button></div>
+    ${scheduled.length?`<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+      <div style="color:var(--muted);font-size:12px;margin-bottom:6px">已排期（UTC）</div>
+      ${scheduled.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;padding:3px 0">
+        <span style="color:${s.sent?'var(--faint)':'var(--text)'}">${esc(s.send_at)} · ${esc((s.text||'').slice(0,22))}${s.sent?'（已发）':''}</span>
+        ${s.sent?'':`<button class="btn neg sm bcCancelSched" data-id="${s.id}">取消</button>`}</div>`).join("")}
+    </div>`:''}`;
+  $("#modalBg").classList.add("on");
+  $("#bcCancel").onclick=closeModal;
+  document.querySelectorAll(".bcCancelSched").forEach(b=>b.onclick=async()=>{ try{ await api("broadcast/cancel",{id:+b.dataset.id}); toast("已取消","ok"); broadcastModal(); }catch(e){ toast(e.message,"bad"); } });
+  $("#bcGo").onclick=async()=>{
+    const text=($("#bcText").value||"").trim(); if(!text) return toast("请输入内容","bad");
+    const buttons=parseButtons($("#bcBtns").value);
+    const when=$("#bcWhen").value;
+    if(when){
+      const dt=new Date(when); if(isNaN(dt.getTime())) return toast("时间格式不对","bad");
+      const send_at=dt.toISOString().slice(0,16).replace("T"," ");
+      try{ await api("broadcast/schedule",{text,buttons,send_at}); toast("已排期定时发送","ok"); broadcastModal(); }catch(e){ toast(e.message,"bad"); }
+      return;
+    }
+    const go=$("#bcGo"); go.disabled=true;
+    let offset=0,sent=0,total=0;
+    try{
+      while(true){
+        const d=await api("broadcast",{text,buttons,offset,limit:40});
+        sent+=d.sent; total=d.total; offset=d.nextOffset;
+        $("#bcProgress").textContent=`已发送 ${sent}/${total}…`;
+        if(d.done) break;
+      }
+      toast(`群发完成，共 ${sent} 人`,"ok"); closeModal();
+    }catch(e){ toast(e.message,"bad"); go.disabled=false; }
+  };
+}
+let cfgRules=[];
+async function configModal(){
+  let cfg={welcome_text:"",autoreply:[],qr_url:""};
+  try{ cfg=(await api("config/get")).config; }catch(e){}
+  cfgRules=(cfg.autoreply||[]).map(r=>({kw:r.kw,reply:r.reply}));
+  $("#modalBox").style.width="540px";
+  $("#modalBox").innerHTML=`
+    <h3>⚙️ 自动回复 / 配置</h3>
+    <div class="field"><label>欢迎语（玩家 /start 时发送；留空用默认）</label>
+      <textarea class="input" id="cfgWelcome" rows="3" style="resize:vertical;width:100%">${esc(cfg.welcome_text||"")}</textarea></div>
+    <div class="field"><label>充值二维码图片 URL（点聊天里"💳 二维码"发给玩家）</label>
+      <input class="input" id="cfgQr" value="${esc(cfg.qr_url||"")}" placeholder="https://…（图片直链）"></div>
+    <div class="field"><label>关键词自动回复（玩家消息含关键词即自动回）</label>
+      <div id="cfgRules"></div>
+      <button class="btn ghost sm" id="cfgAddRule" style="margin-top:6px">➕ 添加规则</button></div>
+    <div class="acts"><button class="btn ghost" id="cfgCancel">关闭</button><button class="btn" id="cfgSave">保存</button></div>`;
+  $("#modalBg").classList.add("on");
+  renderCfgRules();
+  $("#cfgAddRule").onclick=()=>{ cfgRules.push({kw:"",reply:""}); renderCfgRules(); };
+  $("#cfgCancel").onclick=closeModal;
+  $("#cfgSave").onclick=async()=>{
+    try{ await api("config/save",{welcome_text:$("#cfgWelcome").value,qr_url:$("#cfgQr").value,autoreply:cfgRules});
+      toast("配置已保存","ok"); closeModal(); }catch(e){ toast(e.message,"bad"); }
+  };
+}
+function renderCfgRules(){
+  const box=$("#cfgRules"); if(!box) return;
+  box.innerHTML = cfgRules.length ? cfgRules.map((r,i)=>`
+    <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+      <input class="input cfgKw" data-i="${i}" placeholder="关键词" value="${esc(r.kw||'')}" style="width:120px;padding:6px 8px">
+      <input class="input cfgRe" data-i="${i}" placeholder="自动回复内容" value="${esc(r.reply||'')}" style="flex:1;padding:6px 8px">
+      <button class="btn neg sm cfgDel" data-i="${i}">删</button></div>`).join("")
+    : '<div style="color:var(--faint);font-size:12px">暂无规则</div>';
+  box.querySelectorAll(".cfgKw").forEach(inp=>inp.oninput=()=>cfgRules[+inp.dataset.i].kw=inp.value);
+  box.querySelectorAll(".cfgRe").forEach(inp=>inp.oninput=()=>cfgRules[+inp.dataset.i].reply=inp.value);
+  box.querySelectorAll(".cfgDel").forEach(b=>b.onclick=()=>{ cfgRules.splice(+b.dataset.i,1); renderCfgRules(); });
 }
 
 /* ---------- modal ---------- */

@@ -22,6 +22,10 @@
 	"assets": {
 		"directory": "./public",
 		"not_found_handling": "single-page-application"
+	},
+	// 每分钟触发，发送到期的定时广播（src/index.ts 的 scheduled() 处理）
+	"triggers": {
+		"crons": ["* * * * *"]
 	}
 	/**
 	 * Smart Placement

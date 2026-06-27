@@ -51,6 +51,16 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_msg_tg   ON messages(tg_id);
 CREATE INDEX IF NOT EXISTS idx_msg_seen ON messages(direction, seen);
 
+-- 定时广播队列（Cron 每分钟扫描 send_at<=now 且 sent=0 的记录群发）
+CREATE TABLE IF NOT EXISTS scheduled_broadcasts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  text       TEXT NOT NULL,
+  buttons    TEXT,                              -- JSON 数组，快捷按钮
+  send_at    TEXT NOT NULL,                      -- UTC 'YYYY-MM-DD HH:MM'
+  sent       INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- 管理员表（多账号，各自独立用户名 + 密码）------------------------------
 -- password 格式：pbkdf2$sha256$<iterations>$<saltHex>$<hashHex>
 CREATE TABLE IF NOT EXISTS admins (

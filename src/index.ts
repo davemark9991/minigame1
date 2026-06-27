@@ -24,6 +24,26 @@ export default {
     }
 
     return new Response("OK");
+  },
+
+  // Cron：发送到期的定时广播（每分钟触发，见 wrangler.jsonc triggers.crons）
+  async scheduled(event: any, env: any, ctx: any): Promise<void> {
+    const db: any = env.DB1 || env.DB;
+    try {
+      const now = new Date().toISOString().slice(0, 16).replace("T", " ");   // UTC 'YYYY-MM-DD HH:MM'
+      const due: any = await db.prepare(
+        `SELECT id, text, buttons FROM scheduled_broadcasts WHERE sent = 0 AND send_at <= ? ORDER BY id LIMIT 5`).bind(now).all();
+      for (const b of (due.results || [])) {
+        let buttons: any = [];
+        try { buttons = JSON.parse(b.buttons || "[]"); } catch (e) {}
+        const markup = buildReplyKeyboard(buttons);
+        const rows: any = await db.prepare(`SELECT tg_id FROM players WHERE status != 'banned'`).all();
+        for (const p of (rows.results || [])) {
+          try { await sendMessage(env.TELEGRAM_BOT_TOKEN, p.tg_id, b.text, markup); } catch (e) {}
+        }
+        await db.prepare(`UPDATE scheduled_broadcasts SET sent = 1 WHERE id = ?`).bind(b.id).run();
+      }
+    } catch (e) {}
   }
 };
 
@@ -346,8 +366,14 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/chat/list":       return adminChatList(db);
       case "/api/admin/chat/thread":     return adminChatThread(db, body);
       case "/api/admin/chat/send":       return adminChatSend(db, body, env);
+      case "/api/admin/chat/photo":      return adminChatPhoto(db, body, env);
       case "/api/admin/chat/unread":     return adminChatUnread(db);
       case "/api/admin/broadcast":       return adminBroadcast(db, body, env);
+      case "/api/admin/broadcast/schedule":     return adminBroadcastSchedule(db, body);
+      case "/api/admin/broadcast/scheduled":    return adminBroadcastScheduledList(db);
+      case "/api/admin/broadcast/cancel":       return adminBroadcastCancel(db, body);
+      case "/api/admin/config/get":      return adminConfigGet(db);
+      case "/api/admin/config/save":     return adminConfigSave(db, body);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
@@ -543,7 +569,9 @@ async function adminChatSend(db: any, body: any, env: any): Promise<Response> {
   const tg_id = parseInt(body.tg_id, 10);
   const text = String(body.text || "").slice(0, 2000);
   if (!tg_id || !text.trim()) return jsonResp({ ok: false, error: "bad_input" }, 400);
-  await sendMessage(env.TELEGRAM_BOT_TOKEN, tg_id, text, buildReplyKeyboard(body.buttons));
+  let markup = buildReplyKeyboard(body.buttons);
+  if (!markup && body.remove_keyboard) markup = { remove_keyboard: true };   // 移除玩家键盘
+  await sendMessage(env.TELEGRAM_BOT_TOKEN, tg_id, text, markup);
   await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, text).run();
   return jsonResp({ ok: true });
 }
@@ -555,21 +583,106 @@ async function adminChatUnread(db: any): Promise<Response> {
   } catch (e) { return jsonResp({ ok: true, unread: 0 }); }
 }
 
-// 广播：给所有未封禁玩家群发一条消息（可带快捷按钮）。
+// 发图片（充值二维码）。photo 可为图片 URL。
+async function sendPhoto(token: string, chatId: number, photo: string, caption?: string): Promise<void> {
+  if (!token || !photo) return;
+  await fetch("https://api.telegram.org/bot" + token + "/sendPhoto", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, photo, caption: caption || "" })
+  });
+}
+
+async function adminChatPhoto(db: any, body: any, env: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const cfg = await getConfig(db);
+  const url = String(body.photo_url || cfg.qr_url || "").trim();
+  if (!url) return jsonResp({ ok: false, error: "no_qr", message: "未配置充值二维码图片 URL" }, 400);
+  const caption = String(body.caption || "扫码充值，付款后请把截图发给客服").slice(0, 500);
+  await sendPhoto(env.TELEGRAM_BOT_TOKEN, tg_id, url, caption);
+  await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, "🖼️ [充值二维码] " + caption).run();
+  return jsonResp({ ok: true });
+}
+
+// 广播（分批）：每次发一批，返回 nextOffset 让前端循环到 done。
 async function adminBroadcast(db: any, body: any, env: any): Promise<Response> {
   const text = String(body.text || "").slice(0, 2000);
   if (!text.trim()) return jsonResp({ ok: false, error: "bad_input" }, 400);
-  const markup = buildReplyKeyboard(body.buttons);
-  let rows: any;
-  try { rows = await db.prepare(`SELECT tg_id FROM players WHERE status != 'banned'`).all(); }
-  catch (e) { rows = await db.prepare(`SELECT tg_id FROM players`).all(); }
+  let markup = buildReplyKeyboard(body.buttons);
+  if (!markup && body.remove_keyboard) markup = { remove_keyboard: true };
+  const limit = Math.min(40, Math.max(1, parseInt(body.limit, 10) || 40));
+  const offset = Math.max(0, parseInt(body.offset, 10) || 0);
+  let totalRow: any, rows: any;
+  try {
+    totalRow = await db.prepare(`SELECT COUNT(*) c FROM players WHERE status != 'banned'`).first();
+    rows = await db.prepare(`SELECT tg_id FROM players WHERE status != 'banned' ORDER BY tg_id LIMIT ? OFFSET ?`).bind(limit, offset).all();
+  } catch (e) {
+    totalRow = await db.prepare(`SELECT COUNT(*) c FROM players`).first();
+    rows = await db.prepare(`SELECT tg_id FROM players ORDER BY tg_id LIMIT ? OFFSET ?`).bind(limit, offset).all();
+  }
+  const total = totalRow ? totalRow.c : 0;
   const players = rows.results || [];
   let sent = 0, failed = 0;
   for (const p of players) {
     try { await sendMessage(env.TELEGRAM_BOT_TOKEN, p.tg_id, text, markup); sent++; }
     catch (e) { failed++; }
   }
-  return jsonResp({ ok: true, sent, failed, total: players.length });
+  const nextOffset = offset + players.length;
+  return jsonResp({ ok: true, sent, failed, total, nextOffset, done: players.length === 0 || nextOffset >= total });
+}
+
+// 定时广播
+async function adminBroadcastSchedule(db: any, body: any): Promise<Response> {
+  const text = String(body.text || "").slice(0, 2000);
+  const send_at = String(body.send_at || "").trim();   // UTC 'YYYY-MM-DD HH:MM'
+  if (!text.trim() || !send_at) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const buttons = JSON.stringify(Array.isArray(body.buttons) ? body.buttons : []);
+  await db.prepare(`INSERT INTO scheduled_broadcasts (text, buttons, send_at, sent) VALUES (?, ?, ?, 0)`)
+    .bind(text, buttons, send_at).run();
+  return jsonResp({ ok: true });
+}
+async function adminBroadcastScheduledList(db: any): Promise<Response> {
+  try {
+    const rows: any = await db.prepare(`SELECT id, text, send_at, sent, created_at FROM scheduled_broadcasts ORDER BY id DESC LIMIT 50`).all();
+    return jsonResp({ ok: true, list: rows.results || [] });
+  } catch (e) { return jsonResp({ ok: true, list: [] }); }
+}
+async function adminBroadcastCancel(db: any, body: any): Promise<Response> {
+  const id = parseInt(body.id, 10);
+  if (!id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  await db.prepare(`DELETE FROM scheduled_broadcasts WHERE id = ? AND sent = 0`).bind(id).run();
+  return jsonResp({ ok: true });
+}
+
+// 配置：欢迎语 / 关键词自动回复 / 充值二维码 URL
+async function getConfig(db: any): Promise<any> {
+  const map: any = {};
+  try {
+    const res: any = await db.prepare(`SELECT key, value FROM settings WHERE key IN ('welcome_text','autoreply','qr_url')`).all();
+    for (const r of res.results || []) map[r.key] = r.value;
+  } catch (e) {}
+  let rules: any = [];
+  try { rules = JSON.parse(map.autoreply || "null") || []; } catch (e) { rules = []; }
+  if (!Array.isArray(rules)) rules = [];
+  return { welcome_text: map.welcome_text || "", autoreply: rules, qr_url: map.qr_url || "" };
+}
+async function adminConfigGet(db: any): Promise<Response> {
+  return jsonResp({ ok: true, config: await getConfig(db) });
+}
+async function adminConfigSave(db: any, body: any): Promise<Response> {
+  const upsert = (k: string, v: string) => db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(k, v);
+  const stmts: any[] = [];
+  if (body.welcome_text !== undefined) stmts.push(upsert("welcome_text", String(body.welcome_text).slice(0, 2000)));
+  if (body.qr_url !== undefined) stmts.push(upsert("qr_url", String(body.qr_url).slice(0, 500)));
+  if (body.autoreply !== undefined) {
+    const rules = (Array.isArray(body.autoreply) ? body.autoreply : [])
+      .map((r: any) => ({ kw: String(r.kw || "").slice(0, 40).trim(), reply: String(r.reply || "").slice(0, 1000) }))
+      .filter((r: any) => r.kw && r.reply).slice(0, 30);
+    stmts.push(upsert("autoreply", JSON.stringify(rules)));
+  }
+  if (stmts.length) await db.batch(stmts);
+  return jsonResp({ ok: true, config: await getConfig(db) });
 }
 
 async function adminAdminsList(db: any): Promise<Response> {
@@ -619,8 +732,10 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
           `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, 0)`
         ).bind(userId, username, settings.start_balance).run();
         const appUrl = url.origin + "/";
-        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId,
-          `🎉 欢迎来到霓虹游戏厅！\n\n💰 当前积分：${settings.start_balance} 分\n🎮 下注游戏赢取积分；积分不足请直接在此发消息联系客服充值。\n\n点下方按钮进入游戏 👇`,
+        const cfg = await getConfig(db);
+        const welcome = cfg.welcome_text ||
+          `🎉 欢迎来到霓虹游戏厅！\n\n💰 当前积分：${settings.start_balance} 分\n🎮 下注游戏赢取积分；积分不足请直接在此发消息联系客服充值。\n\n点下方按钮进入游戏 👇`;
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, welcome,
           { inline_keyboard: [[{ text: "🚀 进入游戏", web_app: { url: appUrl } }]] });
       } else if (text.startsWith("/profile")) {
         const p: any = await db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(userId).first();
@@ -636,6 +751,16 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
           await db.prepare(`INSERT INTO messages (tg_id, username, direction, text) VALUES (?, ?, 'in', ?)`)
             .bind(userId, username, text.slice(0, 2000)).run();
         } catch (e) { /* messages 表尚未建则忽略 */ }
+        // 关键词自动回复
+        try {
+          const cfg = await getConfig(db);
+          const low = text.toLowerCase();
+          const hit = (cfg.autoreply || []).find((r: any) => r.kw && low.includes(String(r.kw).toLowerCase()));
+          if (hit) {
+            await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, hit.reply);
+            await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(userId, hit.reply).run();
+          }
+        } catch (e) {}
       }
     }
   } catch (e) {
