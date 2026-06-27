@@ -347,6 +347,7 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
 
   const admin = await requireAdmin(request, env);
   if (!admin) return jsonResp({ ok: false, error: "unauthorized" }, 401);
+  if (path === "/api/admin/chat/upload") return adminChatUpload(request, env, db);   // multipart，单独处理
   const body = await readJson(request);
 
   try {
@@ -367,6 +368,7 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/chat/thread":     return adminChatThread(db, body);
       case "/api/admin/chat/send":       return adminChatSend(db, body, env);
       case "/api/admin/chat/photo":      return adminChatPhoto(db, body, env);
+      case "/api/admin/chat/media":      return adminChatMedia(body, env);
       case "/api/admin/chat/unread":     return adminChatUnread(db);
       case "/api/admin/broadcast":       return adminBroadcast(db, body, env);
       case "/api/admin/broadcast/schedule":     return adminBroadcastSchedule(db, body);
@@ -551,8 +553,14 @@ async function adminChatList(db: any): Promise<Response> {
 async function adminChatThread(db: any, body: any): Promise<Response> {
   const tg_id = parseInt(body.tg_id, 10);
   if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
-  const rows: any = await db.prepare(
-    `SELECT id, direction, text, created_at FROM messages WHERE tg_id = ? ORDER BY id ASC LIMIT 500`).bind(tg_id).all();
+  let rows: any;
+  try {
+    rows = await db.prepare(
+      `SELECT id, direction, text, media_type, media_id, created_at FROM messages WHERE tg_id = ? ORDER BY id ASC LIMIT 500`).bind(tg_id).all();
+  } catch (e) {
+    rows = await db.prepare(
+      `SELECT id, direction, text, created_at FROM messages WHERE tg_id = ? ORDER BY id ASC LIMIT 500`).bind(tg_id).all();
+  }
   try { await db.prepare(`UPDATE messages SET seen=1 WHERE tg_id=? AND direction='in' AND seen=0`).bind(tg_id).run(); } catch (e) {}
   return jsonResp({ ok: true, messages: rows.results || [] });
 }
@@ -601,6 +609,65 @@ async function adminChatPhoto(db: any, body: any, env: any): Promise<Response> {
   const caption = String(body.caption || "扫码充值，付款后请把截图发给客服").slice(0, 500);
   await sendPhoto(env.TELEGRAM_BOT_TOKEN, tg_id, url, caption);
   await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, "🖼️ [充值二维码] " + caption).run();
+  return jsonResp({ ok: true });
+}
+
+// 媒体代理：后台拿 file_id，Worker 用密钥向 Telegram 取文件后回传（token 不暴露给前端）。
+async function adminChatMedia(body: any, env: any): Promise<Response> {
+  const fileId = String(body.media_id || "");
+  if (!fileId) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const token = env.TELEGRAM_BOT_TOKEN;
+  try {
+    const gf: any = await (await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`)).json();
+    if (!gf.ok || !gf.result || !gf.result.file_path) return jsonResp({ ok: false, error: "no_file" }, 404);
+    const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${gf.result.file_path}`);
+    return new Response(fileRes.body, {
+      status: 200,
+      headers: {
+        "Content-Type": fileRes.headers.get("content-type") || "application/octet-stream",
+        "Cache-Control": "private, max-age=86400"
+      }
+    });
+  } catch (e) { return jsonResp({ ok: false, error: "fetch" }, 500); }
+}
+
+// 后台上传文件 -> 转发给玩家（multipart）。kind: photo/video/voice/document
+async function adminChatUpload(request: Request, env: any, db: any): Promise<Response> {
+  let form: FormData;
+  try { form = await request.formData(); } catch (e) { return jsonResp({ ok: false, error: "bad_form" }, 400); }
+  const tg_id = parseInt(String(form.get("tg_id") || ""), 10);
+  const kind = String(form.get("kind") || "document");
+  const caption = String(form.get("caption") || "").slice(0, 1000);
+  const file: any = form.get("file");
+  if (!tg_id || !file) return jsonResp({ ok: false, error: "bad_input" }, 400);
+
+  const map: any = {
+    photo:    { method: "sendPhoto",    field: "photo",    label: "🖼️ [图片]" },
+    video:    { method: "sendVideo",    field: "video",    label: "🎬 [视频]" },
+    voice:    { method: "sendVoice",    field: "voice",    label: "🎤 [语音]" },
+    document: { method: "sendDocument", field: "document", label: "📎 [文件]" }
+  };
+  const m = map[kind] || map.document;
+  const tgForm = new FormData();
+  tgForm.append("chat_id", String(tg_id));
+  if (caption) tgForm.append("caption", caption);
+  tgForm.append(m.field, file, (file.name || "file"));
+  const r: any = await (await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${m.method}`, { method: "POST", body: tgForm })).json();
+  if (!r.ok) return jsonResp({ ok: false, error: "tg", message: r.description || "发送失败" }, 400);
+
+  // 从返回结果里取 file_id，存进消息，方便后台自己也能回看
+  const res = r.result || {};
+  let mid = "";
+  if (res.photo && res.photo.length) mid = res.photo[res.photo.length - 1].file_id;
+  else if (res.video) mid = res.video.file_id;
+  else if (res.voice) mid = res.voice.file_id;
+  else if (res.document) mid = res.document.file_id;
+  try {
+    await db.prepare(`INSERT INTO messages (tg_id, direction, text, media_type, media_id) VALUES (?, 'out', ?, ?, ?)`)
+      .bind(tg_id, m.label + (caption ? (" " + caption) : ""), kind, mid).run();
+  } catch (e) {
+    await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(tg_id, m.label).run();
+  }
   return jsonResp({ ok: true });
 }
 
@@ -761,6 +828,22 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
             await db.prepare(`INSERT INTO messages (tg_id, direction, text) VALUES (?, 'out', ?)`).bind(userId, hit.reply).run();
           }
         } catch (e) {}
+      } else {
+        // 媒体消息（图片 / 语音 / 视频 / 文件）-> 存 file_id，后台用代理显示
+        let mtype = "", mid = "", label = "";
+        if (msg.photo && msg.photo.length) { mtype = "photo"; mid = msg.photo[msg.photo.length - 1].file_id; label = "🖼️ [图片]"; }
+        else if (msg.voice) { mtype = "voice"; mid = msg.voice.file_id; label = "🎤 [语音]"; }
+        else if (msg.video) { mtype = "video"; mid = msg.video.file_id; label = "🎬 [视频]"; }
+        else if (msg.video_note) { mtype = "video"; mid = msg.video_note.file_id; label = "🎬 [视频]"; }
+        else if (msg.document) { mtype = "document"; mid = msg.document.file_id; label = "📎 [文件]"; }
+        else if (msg.audio) { mtype = "voice"; mid = msg.audio.file_id; label = "🎵 [音频]"; }
+        if (mtype) {
+          const cap = (msg.caption || "").slice(0, 1000);
+          try {
+            await db.prepare(`INSERT INTO messages (tg_id, username, direction, text, media_type, media_id) VALUES (?, ?, 'in', ?, ?, ?)`)
+              .bind(userId, username, label + (cap ? (" " + cap) : ""), mtype, mid).run();
+          } catch (e) { /* media 列尚未建则忽略 */ }
+        }
       }
     }
   } catch (e) {

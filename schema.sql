@@ -45,9 +45,14 @@ CREATE TABLE IF NOT EXISTS messages (
   username   TEXT,
   direction  TEXT NOT NULL,                    -- in=玩家发来 / out=管理员回复
   text       TEXT NOT NULL,
+  media_type TEXT,                              -- photo / voice / video / document（纯文字为空）
+  media_id   TEXT,                              -- Telegram file_id
   seen       INTEGER NOT NULL DEFAULT 0,        -- 进站消息管理员是否已读
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- 老库（已有 messages 表）需补两列：
+-- ALTER TABLE messages ADD COLUMN media_type TEXT;
+-- ALTER TABLE messages ADD COLUMN media_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_msg_tg   ON messages(tg_id);
 CREATE INDEX IF NOT EXISTS idx_msg_seen ON messages(direction, seen);
 
