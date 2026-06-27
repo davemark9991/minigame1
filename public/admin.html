@@ -188,6 +188,7 @@
     </div>
     <button class="btn full" type="submit" id="lbtn">登录</button>
     <div class="err" id="lerr"></div>
+    <div style="text-align:center;margin-top:14px"><button type="button" class="btn ghost sm" id="langBtn2">EN</button></div>
   </form>
 </div>
 
@@ -217,7 +218,8 @@
           <h1 id="pageTitle">总览</h1>
           <div class="sub" id="pageSub">线上数据 · 实时</div>
         </div>
-        <button class="btn ghost sm hdr-logout" id="hdrLogout" style="margin-left:auto">🚪 退出</button>
+        <button class="btn ghost sm" id="langBtn" style="margin-left:auto">EN</button>
+        <button class="btn ghost sm hdr-logout" id="hdrLogout">🚪 退出</button>
       </div>
       <div class="toolbar" id="toolbar"></div>
     </div>
@@ -256,6 +258,53 @@ function fmtTime(s){
   const p = n => String(n).padStart(2,"0");
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+/* ---------- 中英双语 i18n ---------- */
+const LANG = localStorage.getItem("mg_lang")==="en" ? "en" : "zh";
+const TR = {
+  "总览":"Overview","玩家管理":"Players","交易流水":"Transactions","客服聊天":"Support Chat","游戏设置":"Game Settings","管理员":"Admins",
+  "玩家":"Players","客服":"Chat","流水":"Logs","设置":"Settings","管理":"Admin",
+  "退出登录":"Log out","已登录":"Logged in","🚪 退出":"🚪 Exit","ADMIN CONSOLE":"ADMIN CONSOLE",
+  "管理员登录":"Admin Login","管理员账号":"Admin username","用户名":"Username","密码":"Password","登录":"Log in","登录中…":"Signing in…","账号或密码错误":"Wrong username or password",
+  "线上数据 · 实时":"Live data · realtime","查看 / 调整线上真实玩家":"View / adjust live players","所有下注与积分变动记录":"All bets & balance changes","玩家消息 · 实时回复":"Player messages · live reply","下注额 + 奖品表，改动实时生效":"Bets + prize tables, applied live","账号增删（各自独立登录）":"Add/remove admins (separate logins)",
+  "玩家总数":"Total players","系统总积分":"Total points","今日抽奖次数":"Today's plays","封禁玩家":"Banned",
+  "玩家列表":"Player list","状态":"Status","操作":"Actions","加载中…":"Loading…","暂无玩家":"No players","已封禁":"Banned","正常":"Active",
+  "➕分":"➕Pts","➖分":"➖Pts","封禁":"Ban","解封":"Unban","明细":"History","积分":"Points","昵称":"Name",
+  "📥 导出 CSV":"📥 Export CSV","📥 导出本页 CSV":"📥 Export page CSV",
+  "赠送积分":"Grant points","扣除积分":"Deduct points","数量":"Amount","删除玩家":"Delete player",
+  "取消":"Cancel","确定":"OK","关闭":"Close","删":"Del","保存":"Save",
+  "会话":"Chats","刷新":"Refresh","← 选择一个会话":"← Select a chat","暂无玩家消息":"No messages yet","还没有消息":"No messages","撤回":"Recall","发送":"Send",
+  "⚙️ 自动回复/配置":"⚙️ Auto-reply/Config","📢 群发广播":"📢 Broadcast","➕ 加分/充值":"➕ Add points","💳 二维码":"💳 QR",
+  "← 上一页":"← Prev","下一页 →":"Next →","时间":"Time","变动":"Change","余额":"Balance","类型":"Type","备注":"Note",
+  "全局":"Global","启用":"Enabled","奖品名":"Prize","分值 / 区间":"Value / range","权重":"Weight","固定分":"Fixed","区间随机":"Range","➕ 添加奖品":"➕ Add prize","💾 保存全部设置":"💾 Save all","新奖品":"New prize",
+  "管理员账号":"Admin accounts","创建时间":"Created","➕ 新增管理员":"➕ Add admin","🔑 改我的密码":"🔑 Change my password","改密码":"Password","删除":"Delete","当前":"current","无":"none",
+  "⚙️ 自动回复 / 配置":"⚙️ Auto-reply / Config","关键词":"Keyword","自动回复内容":"Auto-reply text","➕ 添加规则":"➕ Add rule","暂无规则":"No rules",
+  "消息内容":"Message","已排期":"Scheduled","新增管理员":"Add admin","设置新管理员的登录用户名和密码":"Set the new admin's username and password",
+  "撤回 / 删除消息":"Recall / delete message","给玩家加分 / 充值":"Add points / recharge","加分数量":"Amount",
+  // placeholders
+  "输入回复…（Enter 发送；可先输入作为图片/视频说明）":"Type a reply… (Enter to send; doubles as media caption)",
+  "可选：给玩家的快捷回复按钮，逗号分隔（如 充值,提现,人工客服）":"Optional quick-reply buttons, comma separated",
+  "🔎 搜索 昵称 / Telegram ID":"🔎 Search name / Telegram ID",
+  "🔎 昵称 / Telegram ID / 类型":"🔎 Name / Telegram ID / type",
+  "发送后移除玩家键盘（需清空上面的快捷按钮）":"Remove player keyboard after sending (clear quick buttons above)",
+  "新玩家初始积分（建议 0，靠后台加分）":"New player start points (0 recommended)",
+  "每局下注额（分）":"Bet per play (pts)",
+  "发给所有未封禁玩家。可附带玩家快捷按钮，或定时发送（按你设备的本地时间）。":"Sends to all non-banned players. Optional quick buttons or schedule (your local time).",
+  "快捷按钮（可选，逗号分隔）":"Quick buttons (optional, comma separated)",
+  "定时发送（可选，留空＝立即）":"Schedule (optional, blank = now)",
+  "欢迎语（玩家 /start 时发送；留空用默认）":"Welcome text (on /start; blank = default)"
+};
+function translateDoc(){
+  if(LANG!=="en") return;
+  try{
+    const w=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), arr=[];
+    let n; while(n=w.nextNode()) arr.push(n);
+    arr.forEach(node=>{ const k=(node.nodeValue||"").trim(); if(k && TR[k]) node.nodeValue=node.nodeValue.replace(k,TR[k]); });
+    document.querySelectorAll("[placeholder]").forEach(el=>{ const k=(el.getAttribute("placeholder")||"").trim(); if(k&&TR[k]) el.setAttribute("placeholder",TR[k]); });
+    document.querySelectorAll("[title]").forEach(el=>{ const k=(el.getAttribute("title")||"").trim(); if(k&&TR[k]) el.setAttribute("title",TR[k]); });
+  }catch(e){}
+}
+function toggleLang(){ localStorage.setItem("mg_lang", LANG==="en"?"zh":"en"); location.reload(); }
 
 function toast(msg, kind){
   const t = el("div","toast "+(kind||""),esc(msg));
@@ -899,6 +948,13 @@ function exportCsv(name,rows){
 
 /* ---------- PWA service worker ---------- */
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("/sw.js").catch(()=>{}); }
+
+/* ---------- 语言初始化 ---------- */
+(function(){
+  const lbl = LANG==="en" ? "中" : "EN";
+  ["#langBtn","#langBtn2"].forEach(id=>{ const b=document.querySelector(id); if(b){ b.textContent=lbl; b.onclick=toggleLang; } });
+  if(LANG==="en"){ translateDoc(); setInterval(translateDoc, 600); }
+})();
 
 /* ---------- boot ---------- */
 if(TOKEN){ enterApp(); } else { $("#loginView").style.display="flex"; }

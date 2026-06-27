@@ -162,7 +162,10 @@
       <div class="avatar" id="avatar"></div>
       <div><div class="nick" id="nick">玩家</div><div class="uid" id="uid">ID: --</div></div>
     </div>
-    <div class="coins"><div class="coin-ico">¥</div><span id="coinVal">0</span></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button id="gLang" style="background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer">EN</button>
+      <div class="coins"><div class="coin-ico">¥</div><span id="coinVal">0</span></div>
+    </div>
   </div>
 
   <div class="stage">
@@ -627,6 +630,40 @@
   if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
   renderUser(); renderStats(); loadProfile();
   if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js").catch(function () {}); }
+})();
+</script>
+<script>
+/* ---------- 中英双语切换 ---------- */
+(function(){
+  var LANG = localStorage.getItem("mg_lang")==="en" ? "en" : "zh";
+  var TR = {
+    "玩家":"Player",
+    "🎮 游戏大厅 · GAME HALL":"🎮 GAME HALL",
+    "幸运大转盘":"Lucky Wheel","物理惯性 · 大奖闪烁":"Physics spin · jackpot",
+    "普林科弹珠":"Plinko","真实碰撞 · 倍率槽":"Real bounce · multipliers",
+    "砸金蛋":"Golden Egg","大锤砸下 · 碎屑粒子":"Hammer smash · particles",
+    "刮刮乐":"Scratch","手指涂抹 · 自动揭晓":"Scratch to reveal",
+    "👤 个人中心 · PROFILE":"👤 PROFILE",
+    "总游戏次数":"Total plays","累计赢取金币":"Total won","当前余额":"Balance","最喜欢的游戏":"Favorite","暂无":"None",
+    "← 返回大厅":"← Back","🎰 SPIN":"🎰 SPIN","游戏大厅":"Lobby","个人中心":"Profile",
+    "💰 当前积分":"💰 Balance",
+    "· 下注游戏赢积分，积分不足请联系客服充值":"· Bet to win; low balance? contact support",
+    "恭喜中奖！积分已入账":"You won! Points credited","谢谢参与，未中奖":"No win this time",
+    "积分不足，请联系客服充值":"Not enough points — contact support","该游戏暂时关闭":"This game is closed",
+    "账号已被封禁":"Account banned","请从 Telegram 内打开本游戏":"Open this game inside Telegram","请先在机器人发送 /start":"Send /start to the bot first",
+    "收下金币":"Collect"
+  };
+  function translateDoc(){
+    if(LANG!=="en") return;
+    try{
+      var w=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), arr=[], n;
+      while(n=w.nextNode()) arr.push(n);
+      arr.forEach(function(node){ var k=(node.nodeValue||"").trim(); if(k && TR[k]) node.nodeValue=node.nodeValue.replace(k,TR[k]); });
+    }catch(e){}
+  }
+  var gl=document.getElementById("gLang");
+  if(gl){ gl.textContent = LANG==="en" ? "中" : "EN"; gl.onclick=function(){ localStorage.setItem("mg_lang", LANG==="en"?"zh":"en"); location.reload(); }; }
+  if(LANG==="en"){ translateDoc(); setInterval(translateDoc, 500); }
 })();
 </script>
 </body>
