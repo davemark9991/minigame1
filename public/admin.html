@@ -159,10 +159,19 @@
     .botnav a i{position:absolute;top:5px;left:calc(50% + 9px);width:8px;height:8px;border-radius:50%;background:var(--neg);display:none}
     .botnav a i.on{display:block}
     /* 客服聊天：手机改单栏，列表/会话切换 */
-    #chatWrap{grid-template-columns:1fr!important;height:calc(100vh - 190px)!important}
+    #chatWrap{grid-template-columns:1fr!important;height:auto!important;gap:0!important}
+    #chatListPanel,#chatThreadPanel{height:calc(100dvh - 188px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:340px}
     #chatWrap.showthread #chatListPanel{display:none}
     #chatWrap:not(.showthread) #chatThreadPanel{display:none}
     .chat-back{display:inline-flex!important}
+    /* 输入区更紧凑、按钮不被挤压 */
+    #chatComposer{padding:8px 8px calc(8px + env(safe-area-inset-bottom))!important;gap:6px!important}
+    #chatComposer #chatButtons{font-size:11px;padding:7px 9px}
+    #chatComposer #chatInput{font-size:14px}
+    #chatComposer #chatSend{padding:9px 16px}
+    #chatComposer #chatAttach{padding:9px 11px}
+    #chatComposer label{font-size:11px!important}
+    #chatThread{padding:12px!important}
   }
   .chat-back{display:none}
   .menu-btn{display:none}
@@ -261,6 +270,7 @@ function fmtTime(s){
 
 /* ---------- 中英双语 i18n ---------- */
 const LANG = localStorage.getItem("mg_lang")==="en" ? "en" : "zh";
+function L(zh,en){ return LANG==="en" ? en : zh; }   // 带变量的动态文案用这个
 const TR = {
   "总览":"Overview","玩家管理":"Players","交易流水":"Transactions","客服聊天":"Support Chat","游戏设置":"Game Settings","管理员":"Admins",
   "玩家":"Players","客服":"Chat","流水":"Logs","设置":"Settings","管理":"Admin",
@@ -292,7 +302,23 @@ const TR = {
   "发给所有未封禁玩家。可附带玩家快捷按钮，或定时发送（按你设备的本地时间）。":"Sends to all non-banned players. Optional quick buttons or schedule (your local time).",
   "快捷按钮（可选，逗号分隔）":"Quick buttons (optional, comma separated)",
   "定时发送（可选，留空＝立即）":"Schedule (optional, blank = now)",
-  "欢迎语（玩家 /start 时发送；留空用默认）":"Welcome text (on /start; blank = default)"
+  "欢迎语（玩家 /start 时发送；留空用默认）":"Welcome text (on /start; blank = default)",
+  // toast / 提示
+  "请输入数量":"Enter an amount","已封禁":"Banned","已解封":"Unbanned","已删除该玩家":"Player deleted",
+  "全部设置已保存生效":"All settings saved","全部游戏设置已保存生效":"All game settings saved","某个游戏的最低奖励大于最高奖励":"A game's min reward exceeds its max",
+  "不能删除当前登录账号":"Can't delete the account you're logged in as","已删除":"Deleted","管理员已创建":"Admin created",
+  "密码已修改，下次登录生效":"Password changed (applies next login)","密码已重置":"Password reset","请先选择一个会话":"Select a chat first",
+  "已双向撤回 ✅":"Recalled on both sides ✅","已删除（玩家端未撤回，可能超时）":"Deleted (player side not recalled — maybe expired)",
+  "上传中…":"Uploading…","已发送":"Sent","上传失败":"Upload failed","已发送充值二维码":"QR code sent","已取消":"Canceled",
+  "请输入内容":"Enter a message","时间格式不对":"Invalid time format","已排期定时发送":"Scheduled","配置已保存":"Config saved","没有可导出的数据":"No data to export",
+  "登录已过期，请重新登录":"Session expired, please log in again",
+  // 弹窗标题/标签
+  "删除管理员":"Delete admin","修改我的密码":"Change my password","需要先验证当前密码":"Verify your current password first",
+  "当前密码":"Current password","新密码（≥6位）":"New password (≥6 chars)","用户名（≥3位）":"Username (≥3 chars)","密码（≥6位）":"Password (≥6 chars)",
+  "充值二维码图片 URL（点聊天里\"💳 二维码\"发给玩家）":"Recharge QR image URL (sent via 💳 QR in chat)",
+  "关键词自动回复（玩家消息含关键词即自动回）":"Keyword auto-reply (auto-replies when a message contains the keyword)",
+  "通知玩家（聊天里发一条到账提示）":"Notify the player (send a credited message in chat)",
+  "📢 群发广播":"📢 Broadcast","群发":"Broadcast"
 };
 function translateDoc(){
   if(LANG!=="en") return;
@@ -307,6 +333,7 @@ function translateDoc(){
 function toggleLang(){ localStorage.setItem("mg_lang", LANG==="en"?"zh":"en"); location.reload(); }
 
 function toast(msg, kind){
+  if(LANG==="en" && TR[msg]) msg = TR[msg];
   const t = el("div","toast "+(kind||""),esc(msg));
   $("#toast").appendChild(t);
   setTimeout(()=>{t.style.opacity="0";t.style.transition="opacity .3s";setTimeout(()=>t.remove(),300);},2600);
@@ -436,13 +463,13 @@ function renderUsers(rows){
   });
 }
 function adjustModal(p,sign){
-  modal(`${sign>0?"赠送积分":"扣除积分"}`, `玩家 <b>${esc(p.username)||p.tg_id}</b>（当前 ${fmt(p.balance)} 分）`,
+  modal(L(sign>0?"赠送积分":"扣除积分", sign>0?"Grant points":"Deduct points"), L(`玩家 <b>${esc(p.username)||p.tg_id}</b>（当前 ${fmt(p.balance)} 分）`, `Player <b>${esc(p.username)||p.tg_id}</b> (balance ${fmt(p.balance)})`),
     `<div class="field"><label>数量</label><input class="input" id="mAmt" type="number" min="1" value="100"></div>
      <div class="field"><label>备注（可选）</label><input class="input" id="mNote" placeholder="例如：活动奖励"></div>`,
     async()=>{
       const amt=Math.abs(parseInt($("#mAmt").value,10)||0); if(!amt) return toast("请输入数量","bad");
       await api("adjust",{tg_id:p.tg_id,amount:sign*amt,note:$("#mNote").value.trim()});
-      toast("已"+(sign>0?"赠送":"扣除")+" "+amt+" 分","ok"); closeModal(); refreshUsers();
+      toast(L("已"+(sign>0?"赠送":"扣除")+" "+amt+" 分", (sign>0?"Granted ":"Deducted ")+amt+" pts"),"ok"); closeModal(); refreshUsers();
     });
 }
 async function banPlayer(p){
@@ -495,7 +522,7 @@ async function viewTx(){
   const load=async()=>{
     try{ const d=await api("transactions",{q:$("#tq").value.trim(),from:$("#tfrom").value,to:$("#tto").value,limit:PAGE,offset:txPage*PAGE});
       cacheTx=d.transactions; renderTx(d.transactions);
-      $("#pageInfo").textContent=`第 ${txPage+1} 页 · 本页 ${d.transactions.length} 条`;
+      $("#pageInfo").textContent=L(`第 ${txPage+1} 页 · 本页 ${d.transactions.length} 条`, `Page ${txPage+1} · ${d.transactions.length} rows`);
       const pv=$("#prevPg"), nx=$("#nextPg");
       pv.disabled=txPage<=0; pv.style.opacity=txPage<=0?.45:1;
       nx.disabled=!d.hasMore; nx.style.opacity=d.hasMore?1:.45;
@@ -614,7 +641,7 @@ function updateEV(k){
     const val=p.type==="range" ? ((parseInt(p.min,10)||0)+(parseInt(p.max,10)||0))/2 : (parseInt(p.value,10)||0);
     ev += w*val; });
   const span=document.querySelector('.setEV[data-g="'+k+'"]');
-  if(span){ span.textContent = tw>0 ? `EV ${ev.toFixed(1)} 分 / 下注 ${bet} · 庄家净 ${(bet-ev).toFixed(1)}` : "请添加奖品（权重>0）";
+  if(span){ span.textContent = tw>0 ? L(`EV ${ev.toFixed(1)} 分 / 下注 ${bet} · 庄家净 ${(bet-ev).toFixed(1)}`, `EV ${ev.toFixed(1)} / bet ${bet} · house ${(bet-ev).toFixed(1)}`) : L("请添加奖品（权重>0）","Add prizes (weight > 0)");
     span.style.color = (tw>0 && ev<=bet) ? "var(--pos)" : "var(--warn)"; }
 }
 async function saveSettings(){
@@ -783,7 +810,7 @@ async function loadThread(){
       }
       return `<div style="align-self:${out?'flex-end':'flex-start'};max-width:75%">
         <div style="background:${out?'var(--accent)':'var(--panel2)'};color:${out?'#fff':'var(--text)'};border:1px solid ${out?'transparent':'var(--border2)'};padding:8px 12px;border-radius:12px;font-size:13px;white-space:pre-wrap;word-break:break-word">${inner}</div>
-        <div style="color:var(--faint);font-size:10.5px;margin-top:3px;text-align:${out?'right':'left'}">${out?'我':'玩家'} · ${fmtTime(m.created_at)} <span class="msgdel" data-id="${m.id}" style="cursor:pointer;color:var(--neg);margin-left:6px">撤回</span></div>
+        <div style="color:var(--faint);font-size:10.5px;margin-top:3px;text-align:${out?'right':'left'}">${out?L('我','Me'):L('玩家','Player')} · ${fmtTime(m.created_at)} <span class="msgdel" data-id="${m.id}" style="cursor:pointer;color:var(--neg);margin-left:6px">撤回</span></div>
       </div>`;
     }).join("");
     hydrateMedia();
@@ -834,7 +861,7 @@ function chargeModal(tgid,name){
       const notify=$("#chgNotify").checked;
       try{ const d=await api("adjust",{tg_id:tgid,amount:amt,note:"客服充值"});
         if(notify) await api("chat/send",{tg_id:tgid,text:`💰 已为您充值 ${amt} 分，当前余额 ${d.balance} 分，祝您游戏愉快！`});
-        toast("已加分 "+amt,"ok"); closeModal(); loadThread();
+        toast(L("已加分 "+amt, "Added "+amt+" pts"),"ok"); closeModal(); loadThread();
       }catch(e){ toast(e.message,"bad"); }
     });
 }
@@ -879,10 +906,10 @@ async function broadcastModal(){
       while(true){
         const d=await api("broadcast",{text,buttons,offset,limit:40});
         sent+=d.sent; total=d.total; offset=d.nextOffset;
-        $("#bcProgress").textContent=`已发送 ${sent}/${total}…`;
+        $("#bcProgress").textContent=L(`已发送 ${sent}/${total}…`, `Sent ${sent}/${total}…`);
         if(d.done) break;
       }
-      toast(`群发完成，共 ${sent} 人`,"ok"); closeModal();
+      toast(L(`群发完成，共 ${sent} 人`, `Broadcast done — ${sent} players`),"ok"); closeModal();
     }catch(e){ toast(e.message,"bad"); go.disabled=false; }
   };
 }
