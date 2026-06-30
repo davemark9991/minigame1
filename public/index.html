@@ -347,7 +347,10 @@
   async function loadProfile() {
     try {
       const res = await api("/api/profile");
-      if (res.data && res.data.ok) { setBalance(res.data.balance || 0); setSpins(res.data.spins || 0); }
+      if (res.data && res.data.ok) {
+        setBalance(res.data.balance || 0); setSpins(res.data.spins || 0);
+        if (res.data.player_id) { var j = $("joined"); if (j) j.textContent = "会员ID / Member ID：" + res.data.player_id; }
+      }
     } catch (e) {}
   }
   // 真正发奖：服务端决定 award；返回 {ok, award, balance, spins} 或 {ok:false, error}

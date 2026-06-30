@@ -294,7 +294,7 @@ const TR = {
   // placeholders
   "输入回复…（Enter 发送；可先输入作为图片/视频说明）":"Type a reply… (Enter to send; doubles as media caption)",
   "可选：给玩家的快捷回复按钮，逗号分隔（如 充值,提现,人工客服）":"Optional quick-reply buttons, comma separated",
-  "🔎 搜索 昵称 / Telegram ID":"🔎 Search name / Telegram ID",
+  "🔎 搜索 昵称 / Telegram ID":"🔎 Search name / Telegram ID","🔎 搜索 会员ID / 昵称 / Telegram ID":"🔎 Search member ID / name / Telegram ID","会员ID":"Member ID",
   "🔎 昵称 / Telegram ID / 类型":"🔎 Name / Telegram ID / type",
   "发送后移除玩家键盘（需清空上面的快捷按钮）":"Remove player keyboard after sending (clear quick buttons above)",
   "新玩家初始积分（建议 0，靠后台加分）":"New player start points (0 recommended)",
@@ -429,25 +429,25 @@ async function viewUsers(){
 
   const panel = el("div","panel");
   panel.innerHTML = `<div class="ph"><h3>玩家列表</h3>
-    <div class="filters"><input class="input search" id="uq" placeholder="🔎 搜索 昵称 / Telegram ID"></div></div>
+    <div class="filters"><input class="input search" id="uq" placeholder="🔎 搜索 会员ID / 昵称 / Telegram ID"></div></div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>Telegram ID</th><th>昵称</th><th>积分</th><th>状态</th><th>操作</th>
-    </tr></thead><tbody id="ubody"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody></table></div>`;
+      <th>会员ID</th><th>Telegram ID</th><th>昵称</th><th>积分</th><th>状态</th><th>操作</th>
+    </tr></thead><tbody id="ubody"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody></table></div>`;
   $("#content").innerHTML=""; $("#content").appendChild(panel);
 
   const load = async q=>{
     try{ const d = await api("players",{q}); cachePlayers=d.players; renderUsers(d.players); }
-    catch(e){ $("#ubody").innerHTML=`<tr><td colspan="5" class="empty">${esc(e.message)}</td></tr>`; }
+    catch(e){ $("#ubody").innerHTML=`<tr><td colspan="6" class="empty">${esc(e.message)}</td></tr>`; }
   };
   let tmr; $("#uq").addEventListener("input",e=>{clearTimeout(tmr);tmr=setTimeout(()=>load(e.target.value.trim()),250);});
   load("");
 }
 function renderUsers(rows){
   const b=$("#ubody"); b.innerHTML="";
-  if(!rows.length){ b.innerHTML='<tr><td colspan="5" class="empty">暂无玩家</td></tr>'; return; }
+  if(!rows.length){ b.innerHTML='<tr><td colspan="6" class="empty">暂无玩家</td></tr>'; return; }
   rows.forEach(p=>{
     const tr=el("tr");
-    tr.innerHTML = `<td class="mono">${p.tg_id}</td><td>${esc(p.username)||"<span style='color:var(--faint)'>—</span>"}</td>
+    tr.innerHTML = `<td class="mono" style="color:var(--accent)">${esc(p.player_id)||"—"}</td><td class="mono">${p.tg_id}</td><td>${esc(p.username)||"<span style='color:var(--faint)'>—</span>"}</td>
       <td class="mono">${fmt(p.balance)}</td>
       <td><span class="pill ${p.status==='banned'?'banned':'active'}">${p.status==='banned'?'已封禁':'正常'}</span></td>`;
     const act=el("td"); const wrap=el("div","rowact");
@@ -603,7 +603,7 @@ function renderSettings(){
 function renderPrizeRows(k){
   const body=document.querySelector('.prizeBody[data-g="'+k+'"]'); if(!body) return;
   const prizes=setData.games[k].prizes;
-  if(!prizes.length){ body.innerHTML='<tr><td colspan="5" class="empty" style="padding:18px">还没有奖品，点下方"添加奖品"</td></tr>'; updateEV(k); return; }
+  if(!prizes.length){ body.innerHTML='<tr><td colspan="6" class="empty" style="padding:18px">还没有奖品，点下方"添加奖品"</td></tr>'; updateEV(k); return; }
   body.innerHTML="";
   prizes.forEach((p,i)=>{
     const tr=document.createElement("tr");

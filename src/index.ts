@@ -224,11 +224,24 @@ async function logTx(db: any, tg_id: number, type: string, amount: number,
   } catch (e) { /* 记账失败不影响玩家游戏 */ }
 }
 
+// 好记的会员号 PLAY-XXXXXX（除了 tg_id 之外，给玩家/客服对账用）
+function genPlayerId(): string {
+  const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = ""; for (let i = 0; i < 6; i++) s += a[Math.floor(Math.random() * a.length)];
+  return "PLAY-" + s;
+}
+
 async function ensurePlayer(db: any, user: any, settings: any): Promise<any> {
   const username = user.username || user.first_name || "神秘玩家";
-  await db.prepare(
-    `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, 0)`
-  ).bind(user.id, username, settings.start_balance).run();
+  try {
+    await db.prepare(
+      `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left, player_id) VALUES (?, ?, ?, 0, ?)`
+    ).bind(user.id, username, settings.start_balance, genPlayerId()).run();
+  } catch (e) {
+    await db.prepare(
+      `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, 0)`
+    ).bind(user.id, username, settings.start_balance).run();
+  }
   return db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(user.id).first();
 }
 
@@ -244,6 +257,7 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),
+    player_id: p ? (p.player_id || "") : "",
     balance: p ? p.balance : 0,
     spins: 0,
     banned: p ? (p.status === "banned") : false
@@ -421,17 +435,16 @@ async function adminOverview(db: any): Promise<Response> {
 
 async function adminPlayers(db: any, body: any): Promise<Response> {
   const q = (body.q || "").trim();
-  let rows;
-  if (q) {
-    const like = `%${q}%`;
-    rows = await db.prepare(
-      `SELECT tg_id, username, balance, free_spins_left, status FROM players
-       WHERE CAST(tg_id AS TEXT) LIKE ? OR username LIKE ?
-       ORDER BY balance DESC LIMIT 500`).bind(like, like).all();
-  } else {
-    rows = await db.prepare(
-      `SELECT tg_id, username, balance, free_spins_left, status FROM players
-       ORDER BY balance DESC LIMIT 500`).all();
+  const like = `%${q}%`;
+  let rows: any;
+  try {
+    rows = q
+      ? await db.prepare(`SELECT * FROM players WHERE CAST(tg_id AS TEXT) LIKE ? OR username LIKE ? OR IFNULL(player_id,'') LIKE ? ORDER BY balance DESC LIMIT 500`).bind(like, like, like).all()
+      : await db.prepare(`SELECT * FROM players ORDER BY balance DESC LIMIT 500`).all();
+  } catch (e) {
+    rows = q
+      ? await db.prepare(`SELECT * FROM players WHERE CAST(tg_id AS TEXT) LIKE ? OR username LIKE ? ORDER BY balance DESC LIMIT 500`).bind(like, like).all()
+      : await db.prepare(`SELECT * FROM players ORDER BY balance DESC LIMIT 500`).all();
   }
   return jsonResp({ ok: true, players: rows.results || [] });
 }
@@ -808,15 +821,22 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
 
       if (text.startsWith("/start")) {
         const settings = await getSettings(db);
-        await db.prepare(
-          `INSERT OR IGNORE INTO players (tg_id, username, balance, free_spins_left) VALUES (?, ?, ?, 0)`
-        ).bind(userId, username, settings.start_balance).run();
+        const player: any = await ensurePlayer(db, msg.from, settings);
+        const pid = player ? (player.player_id || "") : "";
+        const bal = player ? player.balance : settings.start_balance;
         const appUrl = url.origin + "/";
         const cfg = await getConfig(db);
+        // 中英双语欢迎语（管理员若在后台设了 welcome_text 则用它）
         const welcome = cfg.welcome_text ||
-          `🎉 欢迎来到霓虹游戏厅！\n\n💰 当前积分：${settings.start_balance} 分\n🎮 下注游戏赢取积分；积分不足请直接在此发消息联系客服充值。\n\n点下方按钮进入游戏 👇`;
+          `🎉 欢迎来到霓虹游戏厅！ / Welcome to Neon Game Hall!\n\n` +
+          (pid ? `🆔 会员ID / Member ID：${pid}\n` : ``) +
+          `💰 当前积分 / Balance：${bal}\n` +
+          `🎮 下注游戏赢取积分；积分不足请点下方“联系客服”充值。\n` +
+          `🎮 Bet to win points; low balance? tap “Support” below.\n\n` +
+          `👇 进入游戏 / Play`;
         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, welcome,
-          { inline_keyboard: [[{ text: "🚀 进入游戏", web_app: { url: appUrl } }]] });
+          { inline_keyboard: [[{ text: "🚀 进入游戏 / Play", web_app: { url: appUrl } }],
+                              [{ text: "💬 联系客服 / Support", callback_data: "support" }]] });
       } else if (text.startsWith("/profile")) {
         const p: any = await db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(userId).first();
         if (p) {
@@ -852,11 +872,31 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
           await storeMsg(db, { tg_id: userId, username, direction: "in", text: label + (cap ? (" " + cap) : ""), media_type: mtype, media_id: mid, tg_msg_id: msg.message_id });
         }
       }
+    } else if (update.callback_query) {
+      // 内嵌按钮回调（“联系客服”）
+      const cq = update.callback_query;
+      const chatId = cq.message && cq.message.chat ? cq.message.chat.id : (cq.from ? cq.from.id : null);
+      await answerCallback(env.TELEGRAM_BOT_TOKEN, cq.id);
+      if (cq.data === "support" && chatId) {
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId,
+          `💬 请直接在此输入您的问题，客服会尽快回复您。\n💬 Please type your question here and our support team will reply soon.`);
+      }
     }
   } catch (e) {
     // 容错处理
   }
   return new Response("OK");
+}
+
+// 回应内嵌按钮点击（关闭加载圈）
+async function answerCallback(token: string, callbackId: string): Promise<void> {
+  if (!token || !callbackId) return;
+  try {
+    await fetch("https://api.telegram.org/bot" + token + "/answerCallbackQuery", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackId })
+    });
+  } catch (e) {}
 }
 
 async function sendMessage(token: string, chatId: number, text: string, replyMarkup?: any): Promise<number | null> {
