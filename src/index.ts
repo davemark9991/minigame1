@@ -807,6 +807,50 @@ async function adminAdminsDelete(db: any, body: any, admin: any): Promise<Respon
 }
 
 // --------------------------------------------------------------------------- //
+// 机器人三语（中文 / English / 马来语）
+// --------------------------------------------------------------------------- //
+const LANGS = ["zh", "en", "ms"];
+const PICK_PROMPT = "🌐 请选择语言 · Choose language · Sila pilih bahasa";
+
+function botStrings(lang: string): any {
+  const L = LANGS.includes(lang) ? lang : "zh";
+  const dict: any = {
+    zh: {
+      play: "🚀 进入游戏", support: "💬 联系客服",
+      welcome: (pid: string, bal: number) =>
+        `🎉 欢迎来到霓虹游戏厅！\n\n🆔 会员ID：${pid}\n💰 当前积分：${bal}\n🎮 下注游戏赢取积分；积分不足请点下方“联系客服”充值。\n\n👇 点下方进入游戏`,
+      supportPrompt: "💬 请直接在此输入您的问题，客服会尽快回复您。",
+      profile: (p: any) => `👤 ${p.username}\n🆔 ${p.player_id || ""}\n💰 积分：${p.balance}`,
+      needStart: "❌ 请先点 /start 选择语言并激活。"
+    },
+    en: {
+      play: "🚀 Play", support: "💬 Support",
+      welcome: (pid: string, bal: number) =>
+        `🎉 Welcome to Neon Game Hall!\n\n🆔 Member ID: ${pid}\n💰 Balance: ${bal}\n🎮 Bet to win points; low balance? tap “Support” below.\n\n👇 Tap below to play`,
+      supportPrompt: "💬 Please type your question here — our support team will reply soon.",
+      profile: (p: any) => `👤 ${p.username}\n🆔 ${p.player_id || ""}\n💰 Balance: ${p.balance}`,
+      needStart: "❌ Please /start first to pick a language and activate."
+    },
+    ms: {
+      play: "🚀 Main", support: "💬 Khidmat",
+      welcome: (pid: string, bal: number) =>
+        `🎉 Selamat datang ke Neon Game Hall!\n\n🆔 ID Ahli: ${pid}\n💰 Baki: ${bal}\n🎮 Bertaruh untuk menang mata; baki rendah? tekan “Khidmat” di bawah.\n\n👇 Tekan di bawah untuk main`,
+      supportPrompt: "💬 Sila taip soalan anda di sini — pasukan khidmat kami akan membalas tidak lama lagi.",
+      profile: (p: any) => `👤 ${p.username}\n🆔 ${p.player_id || ""}\n💰 Baki: ${p.balance}`,
+      needStart: "❌ Sila /start dahulu untuk pilih bahasa dan aktifkan."
+    }
+  };
+  return dict[L];
+}
+
+async function getPlayerLang(db: any, tg_id: number): Promise<string> {
+  try {
+    const r: any = await db.prepare(`SELECT lang FROM players WHERE tg_id = ?`).bind(tg_id).first();
+    return (r && r.lang && LANGS.includes(r.lang)) ? r.lang : "zh";
+  } catch (e) { return "zh"; }
+}
+
+// --------------------------------------------------------------------------- //
 // Telegram Webhook
 // --------------------------------------------------------------------------- //
 async function handleWebhook(request: Request, env: any, db: any, url: URL): Promise<Response> {
@@ -820,31 +864,20 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
       const username = msg.from.username || msg.from.first_name || "神秘玩家";
 
       if (text.startsWith("/start")) {
+        // 建档（含会员ID），然后先弹语言选择，不直接发欢迎
         const settings = await getSettings(db);
-        const player: any = await ensurePlayer(db, msg.from, settings);
-        const pid = player ? (player.player_id || "") : "";
-        const bal = player ? player.balance : settings.start_balance;
-        const appUrl = url.origin + "/";
-        const cfg = await getConfig(db);
-        // 中英双语欢迎语（管理员若在后台设了 welcome_text 则用它）
-        const welcome = cfg.welcome_text ||
-          `🎉 欢迎来到霓虹游戏厅！ / Welcome to Neon Game Hall!\n\n` +
-          (pid ? `🆔 会员ID / Member ID：${pid}\n` : ``) +
-          `💰 当前积分 / Balance：${bal}\n` +
-          `🎮 下注游戏赢取积分；积分不足请点下方“联系客服”充值。\n` +
-          `🎮 Bet to win points; low balance? tap “Support” below.\n\n` +
-          `👇 进入游戏 / Play`;
-        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, welcome,
-          { inline_keyboard: [[{ text: "🚀 进入游戏 / Play", web_app: { url: appUrl } }],
-                              [{ text: "💬 联系客服 / Support", callback_data: "support" }]] });
+        await ensurePlayer(db, msg.from, settings);
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, PICK_PROMPT, {
+          inline_keyboard: [[
+            { text: "🇨🇳 中文", callback_data: "lang:zh" },
+            { text: "🇬🇧 English", callback_data: "lang:en" },
+            { text: "🇲🇾 Bahasa Melayu", callback_data: "lang:ms" }
+          ]]
+        });
       } else if (text.startsWith("/profile")) {
         const p: any = await db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(userId).first();
-        if (p) {
-          await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId,
-            `👤 【${p.username}】\n💰 积分：${p.balance} 分`);
-        } else {
-          await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, `❌ 请先输入 /start 激活。`);
-        }
+        const S = botStrings(p && p.lang ? p.lang : "zh");
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, p ? S.profile(p) : S.needStart);
       } else if (text.trim()) {
         // 普通文字消息 -> 存入客服会话，供后台回复
         await storeMsg(db, { tg_id: userId, username, direction: "in", text: text.slice(0, 2000), tg_msg_id: msg.message_id });
@@ -873,13 +906,31 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
         }
       }
     } else if (update.callback_query) {
-      // 内嵌按钮回调（“联系客服”）
       const cq = update.callback_query;
       const chatId = cq.message && cq.message.chat ? cq.message.chat.id : (cq.from ? cq.from.id : null);
+      const uid = cq.from ? cq.from.id : null;
+      const data = cq.data || "";
       await answerCallback(env.TELEGRAM_BOT_TOKEN, cq.id);
-      if (cq.data === "support" && chatId) {
-        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId,
-          `💬 请直接在此输入您的问题，客服会尽快回复您。\n💬 Please type your question here and our support team will reply soon.`);
+      if (data.startsWith("lang:") && chatId && uid) {
+        // 玩家选了语言 -> 记住 -> 用该语言发欢迎
+        const lang = data.slice(5);
+        if (LANGS.includes(lang)) {
+          try { await db.prepare(`UPDATE players SET lang = ? WHERE tg_id = ?`).bind(lang, uid).run(); } catch (e) {}
+        }
+        const settings = await getSettings(db);
+        const p: any = await ensurePlayer(db, cq.from, settings);
+        const S = botStrings(lang);
+        const cfg = await getConfig(db);
+        const welcome = cfg.welcome_text || S.welcome(p ? (p.player_id || "") : "", p ? p.balance : settings.start_balance);
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, welcome, {
+          inline_keyboard: [
+            [{ text: S.play, web_app: { url: url.origin + "/" } }],
+            [{ text: S.support, callback_data: "support" }]
+          ]
+        });
+      } else if (data === "support" && chatId && uid) {
+        const S = botStrings(await getPlayerLang(db, uid));
+        await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, S.supportPrompt);
       }
     }
   } catch (e) {
