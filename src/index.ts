@@ -987,6 +987,14 @@ async function deleteTgMessage(token: string, chatId: number, msgId: number): Pr
 
 // 统一写入一条会话消息（容忍老库缺列：缺 media/tg_msg_id 时回退最小插入）
 async function storeMsg(db: any, m: any): Promise<void> {
+  // 幂等去重：同一条 Telegram 消息（webhook 重试会重复投递）只存一次
+  if (m.tg_msg_id) {
+    try {
+      const dup: any = await db.prepare(`SELECT id FROM messages WHERE tg_id = ? AND tg_msg_id = ? LIMIT 1`)
+        .bind(m.tg_id, m.tg_msg_id).first();
+      if (dup) return;
+    } catch (e) { /* tg_msg_id 列不存在则跳过去重 */ }
+  }
   try {
     await db.prepare(`INSERT INTO messages (tg_id, username, direction, text, media_type, media_id, tg_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .bind(m.tg_id, m.username || null, m.direction, m.text, m.media_type || null, m.media_id || null, m.tg_msg_id || null).run();
