@@ -809,8 +809,8 @@ async function adminAdminsDelete(db: any, body: any, admin: any): Promise<Respon
 // --------------------------------------------------------------------------- //
 // 机器人三语（中文 / English / 马来语）
 // --------------------------------------------------------------------------- //
-const LANGS = ["zh", "en", "ms"];
-const PICK_PROMPT = "🌐 请选择语言 · Choose language · Sila pilih bahasa";
+const LANGS = ["zh", "en", "ms", "km"];
+const PICK_PROMPT = "🌐 请选择语言 · Choose language · Sila pilih bahasa · សូមជ្រើសរើសភាសា";
 
 function botStrings(lang: string): any {
   const L = LANGS.includes(lang) ? lang : "zh";
@@ -838,6 +838,14 @@ function botStrings(lang: string): any {
       supportPrompt: "💬 Sila taip soalan anda di sini — pasukan khidmat kami akan membalas tidak lama lagi.",
       profile: (p: any) => `👤 ${p.username}\n🆔 ${p.player_id || ""}\n💰 Baki: ${p.balance}`,
       needStart: "❌ Sila /start dahulu untuk pilih bahasa dan aktifkan."
+    },
+    km: {
+      play: "🚀 លេង", support: "💬 ជំនួយ",
+      welcome: (pid: string, bal: number) =>
+        `🎉 សូមស្វាគមន៍មកកាន់ Neon Game Hall!\n\n🆔 លេខសមាជិក៖ ${pid}\n💰 សមតុល្យ៖ ${bal}\n🎮 ភ្នាល់ដើម្បីឈ្នះពិន្ទុ។ សមតុល្យតិច? ចុច “ជំនួយ” ខាងក្រោម។\n\n👇 ចុចខាងក្រោមដើម្បីលេង`,
+      supportPrompt: "💬 សូមវាយសំណួររបស់អ្នកនៅទីនេះ — ក្រុមជំនួយនឹងឆ្លើយតបឆាប់ៗ។",
+      profile: (p: any) => `👤 ${p.username}\n🆔 ${p.player_id || ""}\n💰 សមតុល្យ៖ ${p.balance}`,
+      needStart: "❌ សូម /start ជាមុនសិន ដើម្បីជ្រើសរើសភាសា។"
     }
   };
   return dict[L];
@@ -868,11 +876,12 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
         const settings = await getSettings(db);
         await ensurePlayer(db, msg.from, settings);
         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, PICK_PROMPT, {
-          inline_keyboard: [[
-            { text: "🇨🇳 中文", callback_data: "lang:zh" },
-            { text: "🇬🇧 English", callback_data: "lang:en" },
-            { text: "🇲🇾 Bahasa Melayu", callback_data: "lang:ms" }
-          ]]
+          inline_keyboard: [
+            [{ text: "🇨🇳 中文", callback_data: "lang:zh" },
+             { text: "🇬🇧 English", callback_data: "lang:en" }],
+            [{ text: "🇲🇾 Bahasa Melayu", callback_data: "lang:ms" },
+             { text: "🇰🇭 ខ្មែរ", callback_data: "lang:km" }]
+          ]
         });
       } else if (text.startsWith("/profile")) {
         const p: any = await db.prepare(`SELECT * FROM players WHERE tg_id = ?`).bind(userId).first();
@@ -924,7 +933,7 @@ async function handleWebhook(request: Request, env: any, db: any, url: URL): Pro
         const welcome = cfg.welcome_text || S.welcome(p ? (p.player_id || "") : "", p ? p.balance : settings.start_balance);
         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, welcome, {
           inline_keyboard: [
-            [{ text: S.play, web_app: { url: url.origin + "/" } }],
+            [{ text: S.play, web_app: { url: url.origin + "/?lang=" + lang } }],
             [{ text: S.support, callback_data: "support" }]
           ]
         });

@@ -636,37 +636,43 @@
 })();
 </script>
 <script>
-/* ---------- 中英双语切换 ---------- */
+/* ---------- 四语切换：中文 / English / Bahasa Melayu / ខ្មែរ ---------- */
 (function(){
-  var LANG = localStorage.getItem("mg_lang")==="en" ? "en" : "zh";
+  var VALID = ["zh","en","ms","km"];
+  // 优先用机器人带进来的 ?lang=，其次本地记忆，默认中文
+  var urlLang = new URLSearchParams(location.search).get("lang");
+  if(urlLang && VALID.indexOf(urlLang)>=0){ try{ localStorage.setItem("mg_game_lang", urlLang); }catch(e){} }
+  var LANG = "zh"; try{ var l=localStorage.getItem("mg_game_lang"); if(VALID.indexOf(l)>=0) LANG=l; }catch(e){}
   var TR = {
-    "玩家":"Player",
-    "🎮 游戏大厅 · GAME HALL":"🎮 GAME HALL",
-    "幸运大转盘":"Lucky Wheel","物理惯性 · 大奖闪烁":"Physics spin · jackpot",
-    "普林科弹珠":"Plinko","真实碰撞 · 倍率槽":"Real bounce · multipliers",
-    "砸金蛋":"Golden Egg","大锤砸下 · 碎屑粒子":"Hammer smash · particles",
-    "刮刮乐":"Scratch","手指涂抹 · 自动揭晓":"Scratch to reveal",
-    "👤 个人中心 · PROFILE":"👤 PROFILE",
-    "总游戏次数":"Total plays","累计赢取金币":"Total won","当前余额":"Balance","最喜欢的游戏":"Favorite","暂无":"None",
-    "← 返回大厅":"← Back","🎰 SPIN":"🎰 SPIN","游戏大厅":"Lobby","个人中心":"Profile",
-    "💰 当前积分":"💰 Balance",
-    "· 下注游戏赢积分，积分不足请联系客服充值":"· Bet to win; low balance? contact support",
-    "恭喜中奖！积分已入账":"You won! Points credited","谢谢参与，未中奖":"No win this time",
-    "积分不足，请联系客服充值":"Not enough points — contact support","该游戏暂时关闭":"This game is closed",
-    "账号已被封禁":"Account banned","请从 Telegram 内打开本游戏":"Open this game inside Telegram","请先在机器人发送 /start":"Send /start to the bot first",
-    "收下金币":"Collect"
+    "玩家":{en:"Player",ms:"Pemain",km:"អ្នកលេង"},
+    "🎮 游戏大厅 · GAME HALL":{en:"🎮 GAME HALL",ms:"🎮 LOBI PERMAINAN",km:"🎮 សាលហ្គេម"},
+    "幸运大转盘":{en:"Lucky Wheel",ms:"Roda Bertuah",km:"កង់សំណាង"},"物理惯性 · 大奖闪烁":{en:"Physics spin · jackpot",ms:"Putaran fizik · jackpot",km:"បង្វិល · ជេកផត"},
+    "普林科弹珠":{en:"Plinko",ms:"Plinko",km:"Plinko"},"真实碰撞 · 倍率槽":{en:"Real bounce · multipliers",ms:"Lantunan · pengganda",km:"ការប៉ះ · មេគុណ"},
+    "砸金蛋":{en:"Golden Egg",ms:"Telur Emas",km:"ស៊ុតមាស"},"大锤砸下 · 碎屑粒子":{en:"Hammer smash · particles",ms:"Tukul · serpihan",km:"ញញួរ · ភាគល្អិត"},
+    "刮刮乐":{en:"Scratch",ms:"Calar",km:"កោស"},"手指涂抹 · 自动揭晓":{en:"Scratch to reveal",ms:"Calar untuk dedah",km:"កោសដើម្បីបង្ហាញ"},
+    "👤 个人中心 · PROFILE":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
+    "总游戏次数":{en:"Total plays",ms:"Jumlah main",km:"ចំនួនលេងសរុប"},"累计赢取金币":{en:"Total won",ms:"Jumlah menang",km:"ឈ្នះសរុប"},"当前余额":{en:"Balance",ms:"Baki",km:"សមតុល្យ"},"最喜欢的游戏":{en:"Favorite",ms:"Kegemaran",km:"ចូលចិត្ត"},"暂无":{en:"None",ms:"Tiada",km:"គ្មាន"},
+    "← 返回大厅":{en:"← Back",ms:"← Kembali",km:"← ត្រឡប់"},"🎰 SPIN":{en:"🎰 SPIN",ms:"🎰 PUTAR",km:"🎰 បង្វិល"},"游戏大厅":{en:"Lobby",ms:"Lobi",km:"សាល"},"个人中心":{en:"Profile",ms:"Profil",km:"ប្រវត្តិរូប"},
+    "💰 当前积分":{en:"💰 Balance",ms:"💰 Baki",km:"💰 សមតុល្យ"},
+    "· 下注游戏赢积分，积分不足请联系客服充值":{en:"· Bet to win; low balance? contact support",ms:"· Bertaruh untuk menang; baki rendah? hubungi khidmat",km:"· ភ្នាល់ដើម្បីឈ្នះ; សមតុល្យតិច? ទាក់ទងជំនួយ"},
+    "恭喜中奖！积分已入账":{en:"You won! Points credited",ms:"Anda menang! Mata dikreditkan",km:"អ្នកឈ្នះ! ពិន្ទុបានបញ្ចូល"},"谢谢参与，未中奖":{en:"No win this time",ms:"Tiada kemenangan kali ini",km:"គ្មានឈ្នះលើកនេះ"},
+    "积分不足，请联系客服充值":{en:"Not enough points — contact support",ms:"Mata tidak cukup — hubungi khidmat",km:"ពិន្ទុមិនគ្រប់ — ទាក់ទងជំនួយ"},"该游戏暂时关闭":{en:"This game is closed",ms:"Permainan ini ditutup",km:"ហ្គេមនេះបានបិទ"},
+    "账号已被封禁":{en:"Account banned",ms:"Akaun disekat",km:"គណនីត្រូវបានហាមឃាត់"},"请从 Telegram 内打开本游戏":{en:"Open this game inside Telegram",ms:"Buka permainan dalam Telegram",km:"បើកហ្គេមក្នុង Telegram"},"请先在机器人发送 /start":{en:"Send /start to the bot first",ms:"Hantar /start kepada bot dahulu",km:"ផ្ញើ /start ទៅ bot ជាមុនសិន"},
+    "收下金币":{en:"Collect",ms:"Kutip",km:"ទទួល"}
   };
   function translateDoc(){
-    if(LANG!=="en") return;
+    if(LANG==="zh") return;
     try{
       var w=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), arr=[], n;
       while(n=w.nextNode()) arr.push(n);
-      arr.forEach(function(node){ var k=(node.nodeValue||"").trim(); if(k && TR[k]) node.nodeValue=node.nodeValue.replace(k,TR[k]); });
+      arr.forEach(function(node){ var k=(node.nodeValue||"").trim(); var t=TR[k]&&TR[k][LANG]; if(t) node.nodeValue=node.nodeValue.replace(k,t); });
     }catch(e){}
   }
+  function nextLang(l){ return l==="zh"?"en": l==="en"?"ms": l==="ms"?"km":"zh"; }
   var gl=document.getElementById("gLang");
-  if(gl){ gl.textContent = LANG==="en" ? "中" : "EN"; gl.onclick=function(){ localStorage.setItem("mg_lang", LANG==="en"?"zh":"en"); location.reload(); }; }
-  if(LANG==="en"){ translateDoc(); setInterval(translateDoc, 500); }
+  if(gl){ gl.textContent = LANG==="zh"?"中": LANG==="en"?"EN": LANG==="ms"?"MS":"KM";
+    gl.onclick=function(){ try{ localStorage.setItem("mg_game_lang", nextLang(LANG)); }catch(e){} location.reload(); }; }
+  if(LANG!=="zh"){ translateDoc(); setInterval(translateDoc, 500); }
 })();
 </script>
 </body>
