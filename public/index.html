@@ -195,6 +195,7 @@
         <div class="stat"><div class="v" id="stWin">0</div><div class="k">累计赢取金币</div></div>
         <div class="stat"><div class="v" id="stBal">0</div><div class="k">当前余额</div></div>
       </div>
+      <div id="vipBox"></div>
       <div class="fav"><div class="k">最喜欢的游戏</div><div class="v" id="stFav">暂无</div></div>
     </section>
 
@@ -350,9 +351,33 @@
       if (res.data && res.data.ok) {
         setBalance(res.data.balance || 0); setSpins(res.data.spins || 0);
         if (res.data.player_id) { var j = $("joined"); if (j) j.textContent = "会员ID / Member ID：" + res.data.player_id; }
+        renderVip(res.data);
       }
     } catch (e) {}
   }
+  // VIP 卡片（5 档，按累计存款）
+  function renderVip(d) {
+    var box = $("vipBox"); if (!box) return;
+    var tiers = d.vip_tiers || [], cur = d.vip || 1, dep = d.total_deposit || 0;
+    var curMin = (tiers[cur - 1] ? tiers[cur - 1].min : 0);
+    var next = null; for (var i = 0; i < tiers.length; i++) { if (tiers[i].level === cur + 1) next = tiers[i]; }
+    var bar = next ? Math.max(0, Math.min(100, Math.round((dep - curMin) / ((next.min - curMin) || 1) * 100))) : 100;
+    box.innerHTML =
+      '<div style="background:linear-gradient(135deg,#2a1e4a,#141225);border:1px solid #3a2f5a;border-radius:14px;padding:16px;margin:14px 0">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div><div style="color:#c9a3ff;font-size:12px">VIP</div><div style="font-size:22px;font-weight:900;color:#ffd700">Lv.' + cur + ' · ' + (d.vip_name || '') + '</div></div>' +
+          '<div style="text-align:right;color:#9a9cc8;font-size:12px">累计存款 / Total<br><b style="color:#fff;font-size:16px">' + Number(dep).toLocaleString() + '</b></div>' +
+        '</div>' +
+        (next
+          ? '<div style="margin-top:10px"><div style="height:8px;background:#241d3a;border-radius:5px;overflow:hidden"><div style="height:100%;width:' + bar + '%;background:linear-gradient(90deg,#b14aff,#ffd700)"></div></div>' +
+            '<div style="color:#9a9cc8;font-size:11px;margin-top:4px">距 ' + next.name + ' (Lv.' + next.level + ') 还差 ' + Math.max(0, next.min - dep).toLocaleString() + '</div></div>'
+          : '<div style="margin-top:10px;color:#ffd700;font-size:12px">已达最高等级 🏆</div>') +
+        '<div style="display:flex;gap:6px;margin-top:12px">' +
+          tiers.map(function (t) { return '<div style="flex:1;text-align:center;padding:6px 2px;border-radius:8px;font-size:10px;' + (t.level === cur ? 'background:rgba(255,215,0,.15);color:#ffd700;font-weight:700' : 'color:#6a6a8a') + '">' + t.name + '<br><span style="font-size:9px">' + Number(t.min).toLocaleString() + '</span></div>'; }).join('') +
+        '</div>' +
+      '</div>';
+  }
+
   // 真正发奖：服务端决定 award；返回 {ok, award, balance, spins} 或 {ok:false, error}
   var GAME_KEY = { "幸运大转盘": "wheel", "普林科弹珠": "plinko", "砸金蛋": "egg", "刮刮乐": "scratch" };
   async function requestAward(gameName) {

@@ -212,6 +212,7 @@
     <a class="nav" data-view="users"><span class="ic">👥</span> 玩家管理</a>
     <a class="nav" data-view="tx"><span class="ic">🧾</span> 交易流水</a>
     <a class="nav" data-view="deposits"><span class="ic">💵</span> 充值记录</a>
+    <a class="nav" data-view="api"><span class="ic">🔗</span> 公司对接</a>
     <a class="nav" data-view="chat"><span class="ic">💬</span> 客服聊天 <span id="navUnread" class="navbadge" style="display:none"></span></a>
     <a class="nav" data-view="settings"><span class="ic">🎛️</span> 游戏设置</a>
     <a class="nav" data-view="admins"><span class="ic">🔐</span> 管理员</a>
@@ -242,6 +243,7 @@
     <a data-view="chat"><b>💬</b><span>客服</span><i id="botUnread"></i></a>
     <a data-view="tx"><b>🧾</b><span>流水</span></a>
     <a data-view="deposits"><b>💵</b><span>充值</span></a>
+    <a data-view="api"><b>🔗</b><span>对接</span></a>
     <a data-view="settings"><b>🎛️</b><span>设置</span></a>
     <a data-view="admins"><b>🔐</b><span>管理</span></a>
   </nav>
@@ -395,7 +397,7 @@ async function pollUnread(){
 
 /* ---------- nav ---------- */
 const TITLES = {overview:["总览","线上数据 · 实时"],users:["玩家管理","查看 / 调整线上真实玩家"],
-  tx:["交易流水","所有下注与积分变动记录"],deposits:["充值记录","登记充值 → 加分 → 留档"],chat:["客服聊天","玩家消息 · 实时回复"],
+  tx:["交易流水","所有下注与积分变动记录"],deposits:["充值记录","登记充值 → 加分 → 留档"],api:["公司对接","API 顾客 · 关联公司名字 · 三方总和"],chat:["客服聊天","玩家消息 · 实时回复"],
   settings:["游戏设置","下注额 + 奖品表，改动实时生效"],admins:["管理员","账号增删（各自独立登录）"]};
 document.querySelectorAll(".nav[data-view], .botnav a[data-view]").forEach(n=>n.addEventListener("click",()=>go(n.dataset.view)));
 $("#menuBtn").addEventListener("click",()=>$("#side").classList.toggle("show"));
@@ -406,7 +408,7 @@ function go(view){
   $("#pageTitle").textContent=TITLES[view][0]; $("#pageSub").textContent=TITLES[view][1];
   $("#toolbar").innerHTML=""; $("#content").innerHTML='<div class="empty">加载中…</div>';
   $("#side").classList.remove("show");
-  ({overview:viewOverview,users:viewUsers,tx:viewTx,deposits:viewDeposits,chat:viewChat,settings:viewSettings,admins:viewAdmins}[view])();
+  ({overview:viewOverview,users:viewUsers,tx:viewTx,deposits:viewDeposits,api:viewApi,chat:viewChat,settings:viewSettings,admins:viewAdmins}[view])();
 }
 
 /* ---------- Overview ---------- */
@@ -710,6 +712,48 @@ function resetPwdModal(a){
     `<div class="field"><label>新密码（≥6位）</label><input class="input" id="pwNew2" type="text" placeholder="新密码"></div>`,
     async()=>{ try{ await api("password",{id:a.id,new:$("#pwNew2").value});
       toast("密码已重置","ok"); closeModal(); }catch(e){ toast(e.message,"bad"); } });
+}
+
+/* ---------- 公司对接 / API 顾客 ---------- */
+async function viewApi(){
+  let t={};
+  try{ t=await api("apic/totals"); }catch(e){}
+  $("#content").innerHTML=`
+    <div class="cards">
+      <div class="card"><div class="k"><span class="dot" style="background:var(--accent)"></span>👥 Telegram 玩家</div><div class="v">${fmt(t.tg_count)} 人 · ${fmt(t.tg_balance)} 分</div></div>
+      <div class="card"><div class="k"><span class="dot" style="background:var(--warn)"></span>🔗 API 顾客(待关联)</div><div class="v">${fmt(t.api_count)} · ${fmt(t.api_pending)} 分</div></div>
+      <div class="card"><div class="k"><span class="dot" style="background:var(--pos)"></span>Σ 合计积分</div><div class="v">${fmt(t.combined)}</div></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>关联公司名字 → Telegram 玩家</h3><span style="color:var(--muted);font-size:12px">关联后，挂起的分/存款自动进账</span></div>
+      <div class="formgrid">
+        <div class="field"><label>玩家 Telegram ID</label><input class="input" id="lkTg" placeholder="tg_id"></div>
+        <div class="field"><label>公司名字</label><input class="input" id="lkName" placeholder="他在你公司的名字"></div>
+      </div>
+      <div style="padding:0 16px 16px"><button class="btn" id="lkGo">🔗 关联</button></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>手动按公司名字加分</h3><span style="color:var(--muted);font-size:12px">已关联玩家直接进账，未关联先挂起</span></div>
+      <div class="formgrid">
+        <div class="field"><label>公司名字</label><input class="input" id="acName"></div>
+        <div class="field"><label>加积分</label><input class="input" id="acPts" type="number" value="0"></div>
+        <div class="field"><label>加存款(算 VIP)</label><input class="input" id="acDep" type="number" value="0"></div>
+      </div>
+      <div style="padding:0 16px 16px"><button class="btn" id="acGo">💾 加分</button></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>API 顾客</h3><div class="filters"><input class="input search" id="acq" placeholder="🔎 公司名字 / 显示名"></div></div>
+      <div class="tbl-wrap"><table><thead><tr><th>公司名字</th><th>显示名</th><th>待关联积分</th><th>待关联存款</th><th>已关联 TG</th><th>更新</th></tr></thead>
+      <tbody id="acbody"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody></table></div></div>`;
+  const load=async()=>{ try{ const d=await api("apic/list",{q:$("#acq").value.trim()}); const b=$("#acbody");
+      b.innerHTML=d.customers.length ? d.customers.map(x=>`<tr>
+        <td class="mono" style="color:var(--accent)">${esc(x.company_name)}</td><td>${esc(x.name)||'—'}</td>
+        <td class="mono">${fmt(x.pending_points)}</td><td class="mono">${fmt(x.pending_deposit)}</td>
+        <td class="mono">${x.tg_id||'—'}</td><td class="mono" style="color:var(--muted)">${fmtTime(x.updated_at)}</td></tr>`).join("") : '<tr><td colspan="6" class="empty">暂无</td></tr>';
+    }catch(e){ $("#acbody").innerHTML=`<tr><td colspan="6" class="empty">${esc(e.message)}</td></tr>`; } };
+  $("#lkGo").onclick=async()=>{ const tg=$("#lkTg").value.trim(), cn=$("#lkName").value.trim(); if(!tg||!cn) return toast("填 tg_id 和公司名字","bad");
+    try{ const d=await api("link",{tg_id:tg,company_name:cn}); toast("已关联"+(d.applied&&d.applied.points?`，进账 ${d.applied.points} 分`:""),"ok"); viewApi(); }catch(e){ toast(e.message,"bad"); } };
+  $("#acGo").onclick=async()=>{ const cn=$("#acName").value.trim(); if(!cn) return toast("填公司名字","bad");
+    try{ await api("apic/credit",{company_name:cn,points:$("#acPts").value,deposit:$("#acDep").value}); toast("已加分","ok"); viewApi(); }catch(e){ toast(e.message,"bad"); } };
+  let tmr; $("#acq").addEventListener("input",()=>{clearTimeout(tmr);tmr=setTimeout(load,250);});
+  load();
 }
 
 /* ---------- 充值记录 ---------- */

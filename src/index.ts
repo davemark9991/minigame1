@@ -293,6 +293,50 @@ async function extBalance(db: any, body: any): Promise<Response> {
   return jsonResp({ ok: true, company_name, linked_tg_id: null, pending_points: c.pending_points, total_deposit: c.pending_deposit || 0, vip: vip.level, vip_name: vip.name });
 }
 
+// 后台：把公司名字关联到某 Telegram 玩家（关联后自动把挂起的分/存款进账）
+async function adminLink(db: any, body: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  const company_name = String(body.company_name || "").trim().slice(0, 80);
+  if (!tg_id || !company_name) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const p: any = await db.prepare(`SELECT balance, total_deposit FROM players WHERE tg_id = ?`).bind(tg_id).first();
+  if (!p) return jsonResp({ ok: false, error: "no_user", message: "找不到该玩家（需先 /start）" }, 404);
+  await db.prepare(`UPDATE players SET company_name = ? WHERE tg_id = ?`).bind(company_name, tg_id).run();
+  const c: any = await db.prepare(`SELECT pending_points, pending_deposit FROM api_customers WHERE company_name = ?`).bind(company_name).first();
+  let applied = { points: 0, deposit: 0 };
+  if (c && (c.pending_points || c.pending_deposit)) {
+    const nb = (p.balance || 0) + (c.pending_points || 0);
+    const nd = (p.total_deposit || 0) + (c.pending_deposit || 0);
+    await db.prepare(`UPDATE players SET balance = ?, total_deposit = ? WHERE tg_id = ?`).bind(nb, nd, tg_id).run();
+    if (c.pending_points) await logTx(db, tg_id, "ext_credit", c.pending_points, nb, "关联挂起 " + company_name);
+    await db.prepare(`UPDATE api_customers SET tg_id=?, pending_points=0, pending_deposit=0, updated_at=datetime('now') WHERE company_name=?`).bind(tg_id, company_name).run();
+    applied = { points: c.pending_points || 0, deposit: c.pending_deposit || 0 };
+  } else {
+    await db.prepare(`INSERT INTO api_customers (company_name, tg_id) VALUES (?, ?) ON CONFLICT(company_name) DO UPDATE SET tg_id=excluded.tg_id, updated_at=datetime('now')`).bind(company_name, tg_id).run();
+  }
+  return jsonResp({ ok: true, applied });
+}
+
+async function adminApiList(db: any, body: any): Promise<Response> {
+  const q = (body.q || "").trim(); const like = `%${q}%`;
+  const limit = Math.min(200, Math.max(1, parseInt(body.limit, 10) || 50));
+  const offset = Math.max(0, parseInt(body.offset, 10) || 0);
+  let rows: any;
+  try {
+    rows = q
+      ? await db.prepare(`SELECT * FROM api_customers WHERE company_name LIKE ? OR IFNULL(name,'') LIKE ? ORDER BY updated_at DESC, company_name LIMIT ? OFFSET ?`).bind(like, like, limit + 1, offset).all()
+      : await db.prepare(`SELECT * FROM api_customers ORDER BY updated_at DESC, company_name LIMIT ? OFFSET ?`).bind(limit + 1, offset).all();
+  } catch (e) { return jsonResp({ ok: true, customers: [], hasMore: false }); }
+  const all = rows.results || []; const hasMore = all.length > limit;
+  return jsonResp({ ok: true, customers: all.slice(0, limit), hasMore });
+}
+
+async function adminSourceTotals(db: any): Promise<Response> {
+  let tgBal = 0, tgCount = 0, apiPending = 0, apiCount = 0;
+  try { const a: any = await db.prepare(`SELECT COUNT(*) c, COALESCE(SUM(balance),0) s FROM players`).first(); tgCount = a.c; tgBal = a.s; } catch (e) {}
+  try { const b: any = await db.prepare(`SELECT COUNT(*) c, COALESCE(SUM(pending_points),0) s FROM api_customers`).first(); apiCount = b.c; apiPending = b.s; } catch (e) {}
+  return jsonResp({ ok: true, tg_count: tgCount, tg_balance: tgBal, api_count: apiCount, api_pending: apiPending, combined: tgBal + apiPending });
+}
+
 async function logTx(db: any, tg_id: number, type: string, amount: number,
                      balance_after: number, note?: string): Promise<void> {
   try {
@@ -332,7 +376,9 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const settings = await getSettings(db);
   const p: any = await ensurePlayer(db, user, settings);
-  const vip = computeVip(p ? (p.total_deposit || 0) : 0, await getVipConfig(db));
+  const vipCfg = await getVipConfig(db);
+  const vip = computeVip(p ? (p.total_deposit || 0) : 0, vipCfg);
+  const vipTiers = vipCfg.names.map((nm: string, i: number) => ({ level: i + 1, name: nm, min: i === 0 ? 0 : vipCfg.thresholds[i - 1] }));
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),
@@ -343,6 +389,7 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
     total_deposit: p ? (p.total_deposit || 0) : 0,
     vip: vip.level,
     vip_name: vip.name,
+    vip_tiers: vipTiers,
     company_name: p ? (p.company_name || "") : ""
   });
 }
@@ -476,6 +523,10 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/config/save":     return adminConfigSave(db, body);
       case "/api/admin/deposits/list":   return adminDepositsList(db, body);
       case "/api/admin/deposits/add":    return adminDepositAdd(db, body, admin);
+      case "/api/admin/link":            return adminLink(db, body);
+      case "/api/admin/apic/list":       return adminApiList(db, body);
+      case "/api/admin/apic/credit":     return extCredit(db, body);
+      case "/api/admin/apic/totals":     return adminSourceTotals(db);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
