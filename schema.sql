@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_msg_tg   ON messages(tg_id);
 CREATE INDEX IF NOT EXISTS idx_msg_seen ON messages(direction, seen);
 
+-- 充值记录（后台登记充值 -> 加分 -> 留档）
+CREATE TABLE IF NOT EXISTS deposits (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tg_id      INTEGER NOT NULL,
+  amount     TEXT,                              -- 充值金额（文本，支持货币符号）
+  points     INTEGER NOT NULL DEFAULT 0,        -- 转成的积分
+  spend_date TEXT,                              -- 消费/充值日期
+  note       TEXT,
+  staff      TEXT,                              -- 经手管理员
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dep_tg ON deposits(tg_id);
+
 -- 定时广播队列（Cron 每分钟扫描 send_at<=now 且 sent=0 的记录群发）
 CREATE TABLE IF NOT EXISTS scheduled_broadcasts (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,

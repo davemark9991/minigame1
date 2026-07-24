@@ -211,6 +211,7 @@
     <a class="nav active" data-view="overview"><span class="ic">📊</span> 总览</a>
     <a class="nav" data-view="users"><span class="ic">👥</span> 玩家管理</a>
     <a class="nav" data-view="tx"><span class="ic">🧾</span> 交易流水</a>
+    <a class="nav" data-view="deposits"><span class="ic">💵</span> 充值记录</a>
     <a class="nav" data-view="chat"><span class="ic">💬</span> 客服聊天 <span id="navUnread" class="navbadge" style="display:none"></span></a>
     <a class="nav" data-view="settings"><span class="ic">🎛️</span> 游戏设置</a>
     <a class="nav" data-view="admins"><span class="ic">🔐</span> 管理员</a>
@@ -240,6 +241,7 @@
     <a data-view="users"><b>👥</b><span>玩家</span></a>
     <a data-view="chat"><b>💬</b><span>客服</span><i id="botUnread"></i></a>
     <a data-view="tx"><b>🧾</b><span>流水</span></a>
+    <a data-view="deposits"><b>💵</b><span>充值</span></a>
     <a data-view="settings"><b>🎛️</b><span>设置</span></a>
     <a data-view="admins"><b>🔐</b><span>管理</span></a>
   </nav>
@@ -318,7 +320,13 @@ const TR = {
   "充值二维码图片 URL（点聊天里\"💳 二维码\"发给玩家）":"Recharge QR image URL (sent via 💳 QR in chat)",
   "关键词自动回复（玩家消息含关键词即自动回）":"Keyword auto-reply (auto-replies when a message contains the keyword)",
   "通知玩家（聊天里发一条到账提示）":"Notify the player (send a credited message in chat)",
-  "📢 群发广播":"📢 Broadcast","群发":"Broadcast"
+  "📢 群发广播":"📢 Broadcast","群发":"Broadcast",
+  // 充值记录
+  "充值记录":"Deposits","充值":"Deposits","登记充值":"Log deposit","💾 登记 + 加分":"💾 Log + credit",
+  "登记后自动给玩家加分并留档":"Auto-credits the player and keeps a record",
+  "玩家 Telegram ID":"Player Telegram ID","充值金额":"Amount","加多少积分":"Points to add","消费日期":"Spend date","经手人":"Staff",
+  "已登记并加分":"Logged & credited","登记 → 加分 → 留档":"Log → credit → record",
+  "🔎 昵称 / 会员ID / Telegram ID":"🔎 Name / Member ID / Telegram ID"
 };
 function translateDoc(){
   if(LANG!=="en") return;
@@ -387,7 +395,7 @@ async function pollUnread(){
 
 /* ---------- nav ---------- */
 const TITLES = {overview:["总览","线上数据 · 实时"],users:["玩家管理","查看 / 调整线上真实玩家"],
-  tx:["交易流水","所有下注与积分变动记录"],chat:["客服聊天","玩家消息 · 实时回复"],
+  tx:["交易流水","所有下注与积分变动记录"],deposits:["充值记录","登记充值 → 加分 → 留档"],chat:["客服聊天","玩家消息 · 实时回复"],
   settings:["游戏设置","下注额 + 奖品表，改动实时生效"],admins:["管理员","账号增删（各自独立登录）"]};
 document.querySelectorAll(".nav[data-view], .botnav a[data-view]").forEach(n=>n.addEventListener("click",()=>go(n.dataset.view)));
 $("#menuBtn").addEventListener("click",()=>$("#side").classList.toggle("show"));
@@ -398,7 +406,7 @@ function go(view){
   $("#pageTitle").textContent=TITLES[view][0]; $("#pageSub").textContent=TITLES[view][1];
   $("#toolbar").innerHTML=""; $("#content").innerHTML='<div class="empty">加载中…</div>';
   $("#side").classList.remove("show");
-  ({overview:viewOverview,users:viewUsers,tx:viewTx,chat:viewChat,settings:viewSettings,admins:viewAdmins}[view])();
+  ({overview:viewOverview,users:viewUsers,tx:viewTx,deposits:viewDeposits,chat:viewChat,settings:viewSettings,admins:viewAdmins}[view])();
 }
 
 /* ---------- Overview ---------- */
@@ -702,6 +710,56 @@ function resetPwdModal(a){
     `<div class="field"><label>新密码（≥6位）</label><input class="input" id="pwNew2" type="text" placeholder="新密码"></div>`,
     async()=>{ try{ await api("password",{id:a.id,new:$("#pwNew2").value});
       toast("密码已重置","ok"); closeModal(); }catch(e){ toast(e.message,"bad"); } });
+}
+
+/* ---------- 充值记录 ---------- */
+async function viewDeposits(){
+  $("#content").innerHTML=`
+    <div class="panel"><div class="ph"><h3>登记充值</h3><span style="color:var(--muted);font-size:12px">登记后自动给玩家加分并留档</span></div>
+      <div class="formgrid">
+        <div class="field"><label>玩家 Telegram ID</label><input class="input" id="dpTg" placeholder="tg_id"></div>
+        <div class="field"><label>充值金额</label><input class="input" id="dpAmt" placeholder="如 RM100 / ¥100"></div>
+        <div class="field"><label>加多少积分</label><input class="input" id="dpPts" type="number" min="0" value="0"></div>
+        <div class="field"><label>消费日期</label><input class="input" id="dpDate" type="date"></div>
+        <div class="field"><label>备注</label><input class="input" id="dpNote"></div>
+      </div>
+      <div style="padding:0 16px 16px"><button class="btn" id="dpAdd">💾 登记 + 加分</button></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>充值记录</h3><div class="filters">
+      <input class="input search" id="dpq" placeholder="🔎 昵称 / 会员ID / Telegram ID">
+      <button class="btn ghost sm" id="dpExp">📥 导出本页 CSV</button></div></div>
+      <div class="tbl-wrap"><table><thead><tr><th>时间</th><th>玩家</th><th>会员ID</th><th>金额</th><th>积分</th><th>消费日期</th><th>经手人</th><th>备注</th></tr></thead>
+      <tbody id="dpbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody></table></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding:12px 16px;border-top:1px solid var(--border)">
+        <button class="btn ghost sm" id="dpPrev">← 上一页</button><button class="btn ghost sm" id="dpNext">下一页 →</button></div>
+    </div>`;
+  let page=0, cache=[];
+  const load=async()=>{
+    try{ const d=await api("deposits/list",{q:$("#dpq").value.trim(),offset:page*50,limit:50}); cache=d.deposits;
+      const b=$("#dpbody");
+      b.innerHTML = d.deposits.length ? d.deposits.map(x=>`<tr>
+        <td class="mono" style="color:var(--muted)">${fmtTime(x.created_at)}</td>
+        <td>${esc(x.username)||'—'}</td>
+        <td class="mono" style="color:var(--accent)">${esc(x.player_id)||'—'}</td>
+        <td class="mono">${esc(x.amount)||'—'}</td>
+        <td class="mono pos">+${fmt(x.points)}</td>
+        <td>${esc(x.spend_date)||'—'}</td>
+        <td>${esc(x.staff)||'—'}</td>
+        <td style="color:var(--muted)">${esc(x.note)||''}</td></tr>`).join("") : '<tr><td colspan="8" class="empty">暂无记录</td></tr>';
+      const pv=$("#dpPrev"), nx=$("#dpNext");
+      pv.disabled=page<=0; pv.style.opacity=page<=0?.45:1; nx.disabled=!d.hasMore; nx.style.opacity=d.hasMore?1:.45;
+    }catch(e){ $("#dpbody").innerHTML=`<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`; }
+  };
+  $("#dpAdd").onclick=async()=>{
+    const tg=$("#dpTg").value.trim(); if(!tg) return toast("请填 Telegram ID","bad");
+    try{ await api("deposits/add",{tg_id:tg,amount:$("#dpAmt").value.trim(),points:$("#dpPts").value,spend_date:$("#dpDate").value,note:$("#dpNote").value.trim()});
+      toast("已登记并加分","ok"); $("#dpTg").value="";$("#dpAmt").value="";$("#dpPts").value="0";$("#dpNote").value=""; page=0; load();
+    }catch(e){ toast(e.message,"bad"); }
+  };
+  $("#dpExp").onclick=()=>exportCsv("deposits",cache);
+  let tmr; $("#dpq").addEventListener("input",()=>{clearTimeout(tmr);tmr=setTimeout(()=>{page=0;load();},250);});
+  $("#dpPrev").onclick=()=>{ if(page>0){page--;load();} }; $("#dpNext").onclick=()=>{ page++; load(); };
+  load();
 }
 
 /* ---------- 客服聊天 ---------- */

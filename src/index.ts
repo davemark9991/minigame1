@@ -391,6 +391,8 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/broadcast/cancel":       return adminBroadcastCancel(db, body);
       case "/api/admin/config/get":      return adminConfigGet(db);
       case "/api/admin/config/save":     return adminConfigSave(db, body);
+      case "/api/admin/deposits/list":   return adminDepositsList(db, body);
+      case "/api/admin/deposits/add":    return adminDepositAdd(db, body, admin);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
@@ -809,6 +811,45 @@ async function adminAdminsDelete(db: any, body: any, admin: any): Promise<Respon
 // --------------------------------------------------------------------------- //
 // 机器人三语（中文 / English / 马来语）
 // --------------------------------------------------------------------------- //
+// --------------------------------------------------------------------------- //
+// 充值记录（登记充值 -> 加分 -> 留档）
+// --------------------------------------------------------------------------- //
+async function adminDepositsList(db: any, body: any): Promise<Response> {
+  const q = (body.q || "").trim(); const like = `%${q}%`;
+  const limit = Math.min(200, Math.max(1, parseInt(body.limit, 10) || 50));
+  const offset = Math.max(0, parseInt(body.offset, 10) || 0);
+  let rows: any;
+  try {
+    rows = q
+      ? await db.prepare(`SELECT d.*, p.username, p.player_id FROM deposits d LEFT JOIN players p ON p.tg_id=d.tg_id WHERE CAST(d.tg_id AS TEXT) LIKE ? OR p.username LIKE ? OR IFNULL(p.player_id,'') LIKE ? ORDER BY d.id DESC LIMIT ? OFFSET ?`).bind(like, like, like, limit + 1, offset).all()
+      : await db.prepare(`SELECT d.*, p.username, p.player_id FROM deposits d LEFT JOIN players p ON p.tg_id=d.tg_id ORDER BY d.id DESC LIMIT ? OFFSET ?`).bind(limit + 1, offset).all();
+  } catch (e) { return jsonResp({ ok: true, deposits: [], hasMore: false }); }
+  const all = rows.results || []; const hasMore = all.length > limit;
+  return jsonResp({ ok: true, deposits: all.slice(0, limit), hasMore, offset });
+}
+
+async function adminDepositAdd(db: any, body: any, admin: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  const points = Math.max(0, parseInt(body.points, 10) || 0);
+  const amount = String(body.amount || "").slice(0, 40);
+  const spend_date = String(body.spend_date || "").slice(0, 20);
+  const note = String(body.note || "").slice(0, 200);
+  if (!tg_id) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const p: any = await db.prepare(`SELECT balance FROM players WHERE tg_id = ?`).bind(tg_id).first();
+  if (!p) return jsonResp({ ok: false, error: "no_user", message: "找不到该玩家（对方需先 /start）" }, 404);
+  try {
+    await db.prepare(`INSERT INTO deposits (tg_id, amount, points, spend_date, note, staff) VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(tg_id, amount || null, points, spend_date || null, note || null, admin ? admin.username : null).run();
+  } catch (e) { return jsonResp({ ok: false, error: "no_table", message: "请先建 deposits 表" }, 500); }
+  let newBal = p.balance;
+  if (points > 0) {
+    newBal = p.balance + points;
+    await db.prepare(`UPDATE players SET balance = ? WHERE tg_id = ?`).bind(newBal, tg_id).run();
+    await logTx(db, tg_id, "deposit", points, newBal, "充值" + (amount ? (" " + amount) : ""));
+  }
+  return jsonResp({ ok: true, balance: newBal });
+}
+
 const LANGS = ["zh", "en", "ms", "km"];
 const PICK_PROMPT = "🌐 请选择语言 · Choose language · Sila pilih bahasa · សូមជ្រើសរើសភាសា";
 
