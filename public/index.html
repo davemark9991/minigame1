@@ -195,8 +195,14 @@
         <div class="stat"><div class="v" id="stWin">0</div><div class="k">累计赢取金币</div></div>
         <div class="stat"><div class="v" id="stBal">0</div><div class="k">当前余额</div></div>
       </div>
-      <div id="vipBox"></div>
       <div class="fav"><div class="k">最喜欢的游戏</div><div class="v" id="stFav">暂无</div></div>
+    </section>
+
+    <!-- ===== VIP / 等级 ===== -->
+    <section class="scene" id="scene-vip">
+      <div class="h-title">👑 VIP 等级 · RANKING</div>
+      <div id="vipBox"></div>
+      <p class="tip" style="margin-top:12px">💎 累计存款越多，VIP 等级越高。存款请联系客服充值。</p>
     </section>
 
     <!-- ===== 转盘房间 ===== -->
@@ -254,6 +260,7 @@
   <!-- 底部导航 -->
   <div class="nav">
     <button class="active" data-nav="lobby"><span class="ic">🎮</span>游戏大厅</button>
+    <button data-nav="vip"><span class="ic">👑</span>VIP</button>
     <button data-nav="profile"><span class="ic">👤</span>个人中心</button>
   </div>
 </div>
@@ -415,7 +422,7 @@
     document.querySelectorAll(".scene").forEach(function (s) { s.classList.toggle("active", s.id === "scene-" + scene); });
   }
   function setNav(nav) { document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("active", b.dataset.nav === nav); }); }
-  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); }); });
+  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); }); });
   document.querySelectorAll(".card").forEach(function (c) { c.addEventListener("click", function () { sfx("click"); openGame(c.dataset.game); }); });
   document.querySelectorAll("[data-back]").forEach(function (b) { b.addEventListener("click", function () { sfx("click"); setNav("lobby"); show("lobby"); }); });
   $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); afterPop(); });
@@ -683,7 +690,9 @@
     "恭喜中奖！积分已入账":{en:"You won! Points credited",ms:"Anda menang! Mata dikreditkan",km:"អ្នកឈ្នះ! ពិន្ទុបានបញ្ចូល"},"谢谢参与，未中奖":{en:"No win this time",ms:"Tiada kemenangan kali ini",km:"គ្មានឈ្នះលើកនេះ"},
     "积分不足，请联系客服充值":{en:"Not enough points — contact support",ms:"Mata tidak cukup — hubungi khidmat",km:"ពិន្ទុមិនគ្រប់ — ទាក់ទងជំនួយ"},"该游戏暂时关闭":{en:"This game is closed",ms:"Permainan ini ditutup",km:"ហ្គេមនេះបានបិទ"},
     "账号已被封禁":{en:"Account banned",ms:"Akaun disekat",km:"គណនីត្រូវបានហាមឃាត់"},"请从 Telegram 内打开本游戏":{en:"Open this game inside Telegram",ms:"Buka permainan dalam Telegram",km:"បើកហ្គេមក្នុង Telegram"},"请先在机器人发送 /start":{en:"Send /start to the bot first",ms:"Hantar /start kepada bot dahulu",km:"ផ្ញើ /start ទៅ bot ជាមុនសិន"},
-    "收下金币":{en:"Collect",ms:"Kutip",km:"ទទួល"}
+    "收下金币":{en:"Collect",ms:"Kutip",km:"ទទួល"},
+    "👑 VIP 等级 · RANKING":{en:"👑 VIP · RANKING",ms:"👑 VIP · RANKING",km:"👑 VIP · RANKING"},
+    "💎 累计存款越多，VIP 等级越高。存款请联系客服充值。":{en:"💎 The more you deposit, the higher your VIP. Contact support to top up.",ms:"💎 Lebih banyak deposit, VIP lebih tinggi. Hubungi khidmat untuk tambah nilai.",km:"💎 ដាក់ប្រាក់កាន់តែច្រើន VIP កាន់តែខ្ពស់។ ទាក់ទងជំនួយ។"}
   };
   function translateDoc(){
     if(LANG==="zh") return;
@@ -693,10 +702,21 @@
       arr.forEach(function(node){ var k=(node.nodeValue||"").trim(); var t=TR[k]&&TR[k][LANG]; if(t) node.nodeValue=node.nodeValue.replace(k,t); });
     }catch(e){}
   }
-  function nextLang(l){ return l==="zh"?"en": l==="en"?"ms": l==="ms"?"km":"zh"; }
+  function pickLang(){
+    var opts=[["zh","🇨🇳 中文"],["en","🇬🇧 English"],["ms","🇲🇾 Bahasa Melayu"],["km","🇰🇭 ខ្មែរ"]];
+    var ov=document.createElement("div");
+    ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
+    ov.innerHTML='<div style="background:#16121f;border:1px solid #3a2f5a;border-radius:16px;padding:18px;width:280px;max-width:88vw;box-shadow:0 10px 40px rgba(0,0,0,.5)">'+
+      '<div style="color:#c9a3ff;font-size:13px;margin-bottom:12px;text-align:center">选择语言 · Language</div>'+
+      opts.map(function(o){return '<button data-l="'+o[0]+'" style="display:block;width:100%;margin:6px 0;padding:12px;border-radius:10px;border:1px solid #3a2f5a;background:'+(o[0]===LANG?"rgba(177,74,255,.22)":"#221a3a")+';color:#fff;font-size:15px;cursor:pointer">'+o[1]+'</button>';}).join("")+
+      '</div>';
+    ov.onclick=function(e){ if(e.target===ov) document.body.removeChild(ov); };
+    ov.querySelectorAll("button[data-l]").forEach(function(btn){ btn.onclick=function(){ try{ localStorage.setItem("mg_game_lang", btn.getAttribute("data-l")); }catch(e){} location.reload(); }; });
+    document.body.appendChild(ov);
+  }
   var gl=document.getElementById("gLang");
   if(gl){ gl.textContent = LANG==="zh"?"中": LANG==="en"?"EN": LANG==="ms"?"MS":"KM";
-    gl.onclick=function(){ try{ localStorage.setItem("mg_game_lang", nextLang(LANG)); }catch(e){} location.reload(); }; }
+    gl.onclick=pickLang; }
   if(LANG!=="zh"){ translateDoc(); setInterval(translateDoc, 500); }
 })();
 </script>
