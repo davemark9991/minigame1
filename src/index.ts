@@ -18,6 +18,7 @@ export default {
     if (request.method === "POST") {
       const path = url.pathname;
       if (path.startsWith("/api/admin/")) return handleAdmin(request, env, db, path);
+      if (path.startsWith("/api/ext/")) return handleExt(request, env, db, path);   // 公司对接 API
       if (path === "/api/profile") return handleProfile(request, env, db);
       if (path === "/api/spin") return handleSpin(request, env, db);
       return handleWebhook(request, env, db, url);   // Telegram webhook
@@ -215,6 +216,83 @@ async function getSettings(db: any): Promise<any> {
   return { start_balance: num("start_balance", 0), games };
 }
 
+// --------------------------------------------------------------------------- //
+// VIP 等级（按累计存款 total_deposit 分 5 档；阈值/名称可在 settings 配）
+// --------------------------------------------------------------------------- //
+async function getVipConfig(db: any): Promise<any> {
+  let thresholds = [100, 500, 2000, 10000];               // 4 个阈值把玩家分成 5 档
+  let names = ["Bronze", "Silver", "Gold", "Platinum", "Diamond"];
+  try {
+    const res: any = await db.prepare(`SELECT key, value FROM settings WHERE key IN ('vip_thresholds','vip_names')`).all();
+    for (const r of res.results || []) {
+      if (r.key === "vip_thresholds") { const a = JSON.parse(r.value); if (Array.isArray(a) && a.length === 4) thresholds = a.map((x: any) => parseInt(x, 10) || 0); }
+      if (r.key === "vip_names") { const a = JSON.parse(r.value); if (Array.isArray(a) && a.length === 5) names = a.map((x: any) => String(x)); }
+    }
+  } catch (e) {}
+  return { thresholds, names };
+}
+function computeVip(totalDeposit: number, cfg: any): any {
+  const t = cfg.thresholds; let level = 1;
+  for (let i = 0; i < t.length; i++) { if ((totalDeposit || 0) >= t[i]) level = i + 2; }
+  if (level > 5) level = 5;
+  return { level, name: cfg.names[level - 1] || ("VIP" + level) };
+}
+
+// --------------------------------------------------------------------------- //
+// 公司对接 API（另一个 Worker 调用；用 X-API-Key 鉴权）
+// --------------------------------------------------------------------------- //
+async function handleExt(request: Request, env: any, db: any, path: string): Promise<Response> {
+  const key = request.headers.get("X-API-Key") || "";
+  if (!env.EXT_API_KEY || key !== env.EXT_API_KEY) return jsonResp({ ok: false, error: "unauthorized" }, 401);
+  const body = await readJson(request);
+  try {
+    switch (path) {
+      case "/api/ext/credit":  return extCredit(db, body);
+      case "/api/ext/balance": return extBalance(db, body);
+      default: return jsonResp({ ok: false, error: "not_found" }, 404);
+    }
+  } catch (e: any) { return jsonResp({ ok: false, error: "server", detail: String(e && e.message || e) }, 500); }
+}
+
+// 按公司名字加分/加存款：已关联 Telegram 玩家 -> 直接进游戏余额；未关联 -> 挂起，关联后自动进账
+async function extCredit(db: any, body: any): Promise<Response> {
+  const company_name = String(body.company_name || "").trim().slice(0, 80);
+  if (!company_name) return jsonResp({ ok: false, error: "bad_input", message: "company_name required" }, 400);
+  const points = parseInt(body.points, 10) || 0;
+  const deposit = parseInt(body.deposit, 10) || 0;
+  const name = String(body.name || "").slice(0, 80);
+  await db.prepare(`INSERT INTO api_customers (company_name, name) VALUES (?, ?) ON CONFLICT(company_name) DO UPDATE SET name=COALESCE(NULLIF(excluded.name,''), api_customers.name), updated_at=datetime('now')`).bind(company_name, name || null).run();
+  const player: any = await db.prepare(`SELECT tg_id, balance, total_deposit FROM players WHERE company_name = ? LIMIT 1`).bind(company_name).first();
+  const cfg = await getVipConfig(db);
+  if (player) {
+    const nb = (player.balance || 0) + points, nd = (player.total_deposit || 0) + deposit;
+    await db.prepare(`UPDATE players SET balance=?, total_deposit=? WHERE tg_id=?`).bind(nb, nd, player.tg_id).run();
+    if (points !== 0) await logTx(db, player.tg_id, "ext_credit", points, nb, "API " + company_name);
+    await db.prepare(`UPDATE api_customers SET tg_id=? WHERE company_name=?`).bind(player.tg_id, company_name).run();
+    const vip = computeVip(nd, cfg);
+    return jsonResp({ ok: true, company_name, linked_tg_id: player.tg_id, balance: nb, total_deposit: nd, vip: vip.level, vip_name: vip.name });
+  }
+  await db.prepare(`UPDATE api_customers SET pending_points=pending_points+?, pending_deposit=pending_deposit+?, updated_at=datetime('now') WHERE company_name=?`).bind(points, deposit, company_name).run();
+  const c: any = await db.prepare(`SELECT pending_points, pending_deposit FROM api_customers WHERE company_name=?`).bind(company_name).first();
+  const vip = computeVip(c ? c.pending_deposit : deposit, cfg);
+  return jsonResp({ ok: true, company_name, linked_tg_id: null, pending_points: c ? c.pending_points : points, total_deposit: c ? c.pending_deposit : deposit, vip: vip.level, vip_name: vip.name, note: "no linked Telegram player yet; credited on link" });
+}
+
+async function extBalance(db: any, body: any): Promise<Response> {
+  const company_name = String(body.company_name || "").trim();
+  if (!company_name) return jsonResp({ ok: false, error: "bad_input" }, 400);
+  const cfg = await getVipConfig(db);
+  const player: any = await db.prepare(`SELECT tg_id, balance, total_deposit FROM players WHERE company_name = ? LIMIT 1`).bind(company_name).first();
+  if (player) {
+    const vip = computeVip(player.total_deposit || 0, cfg);
+    return jsonResp({ ok: true, company_name, linked_tg_id: player.tg_id, balance: player.balance, total_deposit: player.total_deposit || 0, vip: vip.level, vip_name: vip.name });
+  }
+  const c: any = await db.prepare(`SELECT pending_points, pending_deposit FROM api_customers WHERE company_name=?`).bind(company_name).first();
+  if (!c) return jsonResp({ ok: true, company_name, exists: false });
+  const vip = computeVip(c.pending_deposit || 0, cfg);
+  return jsonResp({ ok: true, company_name, linked_tg_id: null, pending_points: c.pending_points, total_deposit: c.pending_deposit || 0, vip: vip.level, vip_name: vip.name });
+}
+
 async function logTx(db: any, tg_id: number, type: string, amount: number,
                      balance_after: number, note?: string): Promise<void> {
   try {
@@ -254,13 +332,18 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const settings = await getSettings(db);
   const p: any = await ensurePlayer(db, user, settings);
+  const vip = computeVip(p ? (p.total_deposit || 0) : 0, await getVipConfig(db));
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),
     player_id: p ? (p.player_id || "") : "",
     balance: p ? p.balance : 0,
     spins: 0,
-    banned: p ? (p.status === "banned") : false
+    banned: p ? (p.status === "banned") : false,
+    total_deposit: p ? (p.total_deposit || 0) : 0,
+    vip: vip.level,
+    vip_name: vip.name,
+    company_name: p ? (p.company_name || "") : ""
   });
 }
 
@@ -841,12 +924,14 @@ async function adminDepositAdd(db: any, body: any, admin: any): Promise<Response
     await db.prepare(`INSERT INTO deposits (tg_id, amount, points, spend_date, note, staff) VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(tg_id, amount || null, points, spend_date || null, note || null, admin ? admin.username : null).run();
   } catch (e) { return jsonResp({ ok: false, error: "no_table", message: "请先建 deposits 表" }, 500); }
-  let newBal = p.balance;
-  if (points > 0) {
-    newBal = p.balance + points;
+  const depNum = parseInt(String(amount).replace(/[^0-9]/g, ""), 10) || 0;   // 从金额里取数字算 VIP 存款
+  const newBal = p.balance + points;
+  try {
+    await db.prepare(`UPDATE players SET balance = ?, total_deposit = COALESCE(total_deposit,0) + ? WHERE tg_id = ?`).bind(newBal, depNum, tg_id).run();
+  } catch (e) {
     await db.prepare(`UPDATE players SET balance = ? WHERE tg_id = ?`).bind(newBal, tg_id).run();
-    await logTx(db, tg_id, "deposit", points, newBal, "充值" + (amount ? (" " + amount) : ""));
   }
+  if (points > 0) await logTx(db, tg_id, "deposit", points, newBal, "充值" + (amount ? (" " + amount) : ""));
   return jsonResp({ ok: true, balance: newBal });
 }
 

@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS players (
   status          TEXT NOT NULL DEFAULT 'active',  -- active / banned
   last_reset      TEXT,                            -- 每日免费次数重置日期 YYYY-MM-DD(UTC)
   player_id       TEXT,                            -- 好记的会员号 PLAY-XXXXXX
-  lang            TEXT                             -- 玩家选择的语言 zh / en / ms
+  lang            TEXT,                            -- 玩家选择的语言 zh / en / ms / km
+  company_name    TEXT,                            -- 关联的公司账号名字（对接公司 API 用）
+  total_deposit   INTEGER NOT NULL DEFAULT 0       -- 累计存款（决定 VIP 等级）
 );
 -- 老库若已存在 players，按需单独补列（已存在会报错，可忽略）：
 -- ALTER TABLE players ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
@@ -61,6 +63,17 @@ CREATE TABLE IF NOT EXISTS messages (
 -- ALTER TABLE messages ADD COLUMN tg_msg_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_msg_tg   ON messages(tg_id);
 CREATE INDEX IF NOT EXISTS idx_msg_seen ON messages(direction, seen);
+
+-- 公司 API 顾客（另一个 Worker 按公司名字推进来的顾客；关联到 Telegram 玩家后进游戏）
+CREATE TABLE IF NOT EXISTS api_customers (
+  company_name    TEXT PRIMARY KEY,                -- 公司账号名字（唯一）
+  name            TEXT,                            -- 显示名
+  pending_points  INTEGER NOT NULL DEFAULT 0,      -- 未关联前挂起的积分（关联后进玩家余额）
+  pending_deposit INTEGER NOT NULL DEFAULT 0,      -- 未关联前挂起的存款
+  tg_id           INTEGER,                         -- 已关联的 Telegram 玩家
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT
+);
 
 -- 充值记录（后台登记充值 -> 加分 -> 留档）
 CREATE TABLE IF NOT EXISTS deposits (
