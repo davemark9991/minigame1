@@ -37,16 +37,14 @@
   @media (display-mode:standalone){ .topbar{ padding-top:calc(12px + env(safe-area-inset-top)) } }
   .who{display:flex;align-items:center;gap:10px}
   .avatar{width:42px;height:42px;border-radius:50%;background:#333 center/cover;
-    border:2px solid var(--neon);box-shadow:0 0 12px var(--neon);animation:breathe 2.4s ease-in-out infinite}
-  @keyframes breathe{0%,100%{box-shadow:0 0 8px var(--neon)}50%{box-shadow:0 0 20px var(--neon2)}}
+    border:1px solid rgba(201,168,106,.55)}
   .who .nick{font-weight:700;font-size:15px}
   .who .uid{font-size:11px;color:var(--muted)}
-  .coins{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.3);
-    border:1px solid var(--gold);border-radius:999px;padding:7px 14px;
-    box-shadow:0 0 14px rgba(201,168,106,.3)}
+  .coins{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.04);
+    border:1px solid var(--line);border-radius:999px;padding:7px 14px}
   .coin-ico{width:20px;height:20px;border-radius:50%;
-    background:radial-gradient(circle at 35% 30%,#fff6c0,var(--gold) 45%,var(--gold2));
-    box-shadow:inset 0 0 4px #a87800,0 0 8px var(--gold);
+    background:radial-gradient(circle at 35% 30%,#e8d3a2,var(--gold) 55%,var(--gold2));
+    box-shadow:inset 0 0 3px rgba(0,0,0,.4);
     display:flex;align-items:center;justify-content:center;font-size:11px;color:#7a5500;font-weight:900}
   #coinVal{font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
 
@@ -83,11 +81,20 @@
   .back{align-self:flex-start;background:rgba(0,0,0,.3);border:1px solid var(--line);
     color:var(--text);border-radius:999px;padding:8px 16px;font-weight:700;cursor:pointer}
   .room h2{font-size:19px;font-weight:900;letter-spacing:1px;color:var(--gold)}
-  .play-btn{width:min(82vw,320px);border:none;border-radius:16px;padding:16px;font-size:18px;font-weight:900;
-    color:#1a1320;background:linear-gradient(90deg,var(--gold),var(--gold2));cursor:pointer;
-    box-shadow:0 0 24px rgba(201,168,106,.45);transition:transform .08s,opacity .2s}
+  .play-btn{width:min(82vw,320px);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:15px;font-size:17px;font-weight:800;
+    color:#1a1712;background:linear-gradient(180deg,var(--gold2),var(--gold));cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .08s,opacity .2s}
   .play-btn:active{transform:scale(.97)}
-  .play-btn:disabled{opacity:.45;box-shadow:none}
+  .play-btn:disabled{opacity:.4;box-shadow:none}
+  /* 选项按钮：一排并排、低调炭灰底 + 香槟描边（不占满整行、无黄光） */
+  .choices{display:flex;gap:10px;width:min(88vw,340px);justify-content:center}
+  .choices .choice{flex:1;border:1px solid var(--line);border-radius:14px;padding:14px 6px;
+    background:linear-gradient(180deg,#232320,#1a1a1d);color:var(--text);font-size:26px;font-weight:800;
+    cursor:pointer;transition:transform .08s,border-color .15s,background .15s;line-height:1}
+  .choices .choice small{display:block;font-size:11px;color:var(--muted);margin-top:5px;font-weight:600}
+  .choices .choice:active{transform:scale(.95)}
+  .choices .choice.sel{border-color:var(--gold);background:linear-gradient(180deg,#2f2b22,#221f19)}
+  .choices .choice:disabled{opacity:.45;cursor:default}
   .room canvas{touch-action:none}
   .room .tip{font-size:12px;color:var(--muted)}
 
@@ -127,7 +134,7 @@
   .pop.show{display:flex;animation:fade .2s}
   @keyframes fade{from{opacity:0}to{opacity:1}}
   .pop .card2{background:linear-gradient(160deg,#26241f,#131210);border:1px solid var(--gold);
-    border-radius:22px;padding:30px 40px;text-align:center;box-shadow:0 0 44px rgba(201,168,106,.4);animation:pumpin .35s}
+    border-radius:22px;padding:30px 40px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);animation:pumpin .35s}
   @keyframes pumpin{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
   .pop .big{font-size:46px;font-weight:900;color:var(--gold);text-shadow:0 0 20px var(--gold)}
   .pop .lbl{color:#cdd2ff;margin-top:6px}
@@ -272,10 +279,10 @@
           <div id="ball" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:30px;transition:all .5s cubic-bezier(.34,1.2,.4,1)">⚽</div>
         </div>
         <div id="soccerResult" style="font-size:26px;font-weight:900;min-height:32px;margin:6px 0"></div>
-        <div style="display:flex;gap:12px">
-          <button class="play-btn soccer-dir" data-d="left" style="padding:12px 18px">⬅️</button>
-          <button class="play-btn soccer-dir" data-d="center" style="padding:12px 18px">⚽ 射门</button>
-          <button class="play-btn soccer-dir" data-d="right" style="padding:12px 18px">➡️</button>
+        <div class="choices">
+          <button class="choice soccer-dir" data-d="left">⬅️<small data-i18n>左路</small></button>
+          <button class="choice soccer-dir" data-d="center">🎯<small data-i18n>中路</small></button>
+          <button class="choice soccer-dir" data-d="right">➡️<small data-i18n>右路</small></button>
         </div>
         <p class="tip">选方向射门，破门即中奖 ⚽</p>
       </div>
@@ -290,10 +297,10 @@
           <span id="rpsYou">✊</span><span style="font-size:22px;color:#8a8578">VS</span><span id="rpsOpp">✋</span>
         </div>
         <div id="rpsResult" style="font-size:28px;font-weight:900;min-height:34px;margin:4px 0"></div>
-        <div style="display:flex;gap:14px">
-          <button class="play-btn rps-btn" data-c="rock" style="font-size:30px;padding:12px 20px">✊</button>
-          <button class="play-btn rps-btn" data-c="paper" style="font-size:30px;padding:12px 20px">✋</button>
-          <button class="play-btn rps-btn" data-c="scissors" style="font-size:30px;padding:12px 20px">✌️</button>
+        <div class="choices">
+          <button class="choice rps-btn" data-c="rock">✊<small data-i18n>石头</small></button>
+          <button class="choice rps-btn" data-c="paper">✋<small data-i18n>布</small></button>
+          <button class="choice rps-btn" data-c="scissors">✌️<small data-i18n>剪刀</small></button>
         </div>
         <p class="tip">出拳对决，赢了中奖 ✊✋✌️</p>
       </div>
@@ -713,8 +720,9 @@
    * ===================================================================== */
   (function () {
     var busy = false;
-    document.querySelectorAll(".soccer-dir").forEach(function (b) {
-      b.addEventListener("click", function () { sfx("click"); kick(b.dataset.d); });
+    var sbtns = document.querySelectorAll(".soccer-dir");
+    sbtns.forEach(function (b) {
+      b.addEventListener("click", function () { sfx("click"); sbtns.forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); kick(b.dataset.d); });
     });
     async function kick(dir) {
       if (busy) return; busy = true;
@@ -727,7 +735,7 @@
       keeper.style.left = win ? (dir === "center" ? "22%" : "50%") : pos;
       ball.style.bottom = "58%"; ball.style.left = pos;
       setBalance(r.balance);
-      $("soccerResult").textContent = win ? "GOAL! ⚽" : "SAVED 🧤";
+      $("soccerResult").textContent = win ? GT("球进啦！⚽","GOAL! ⚽","GOL! ⚽","បញ្ចូលទី! ⚽") : GT("被扑出 🧤","SAVED 🧤","DISELAMAT 🧤","ការពារបាន 🧤");
       $("soccerResult").style.color = win ? "#34d399" : "#f87171";
       if (win) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
       setTimeout(function () {
@@ -744,8 +752,9 @@
     var busy = false, hands = { rock: "✊", paper: "✋", scissors: "✌️" };
     var beats = { rock: "scissors", paper: "rock", scissors: "paper" };
     var loses = { rock: "paper", paper: "scissors", scissors: "rock" };
-    document.querySelectorAll(".rps-btn").forEach(function (b) {
-      b.addEventListener("click", function () { sfx("click"); play(b.dataset.c); });
+    var rbtns = document.querySelectorAll(".rps-btn");
+    rbtns.forEach(function (b) {
+      b.addEventListener("click", function () { sfx("click"); rbtns.forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); play(b.dataset.c); });
     });
     async function play(choice) {
       if (busy) return; busy = true;
@@ -756,7 +765,7 @@
       var opp = win ? beats[choice] : loses[choice];
       $("rpsYou").textContent = hands[choice];
       $("rpsOpp").textContent = hands[opp];
-      $("rpsResult").textContent = win ? "WIN" : "LOSE";
+      $("rpsResult").textContent = win ? GT("你赢了","WIN","MENANG","ឈ្នះ") : GT("你输了","LOSE","KALAH","ចាញ់");
       $("rpsResult").style.color = win ? "#34d399" : "#f87171";
       setBalance(r.balance);
       if (win) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
@@ -803,7 +812,9 @@
     "点球射门":{en:"Penalty Kick",ms:"Sepakan Penalti",km:"ការទាត់ពិន័យ"},"滑动射门 · 破门得分":{en:"Kick · score to win",ms:"Tendang · jaring menang",km:"ទាត់ · ស៊ុតបញ្ចូល"},
     "剪刀石头布":{en:"Rock Paper Scissors",ms:"Batu Kertas Gunting",km:"ដុំថ្ម ក្រដាស កន្ត្រៃ"},"出拳对决 · 赢家通吃":{en:"Throw hands · winner takes all",ms:"Lawan · menang ambil semua",km:"ប្រកួត · អ្នកឈ្នះយកអស់"},
     "⚽ 射门":{en:"⚽ Shoot",ms:"⚽ Tendang",km:"⚽ ទាត់"},"选方向射门，破门即中奖 ⚽":{en:"Pick a direction — score to win ⚽",ms:"Pilih arah — jaring untuk menang ⚽",km:"ជ្រើសទិស — ស៊ុតបញ្ចូលដើម្បីឈ្នះ ⚽"},
-    "出拳对决，赢了中奖 ✊✋✌️":{en:"Throw hands — win to score ✊✋✌️",ms:"Lawan — menang untuk menang ✊✋✌️",km:"ប្រកួត — ឈ្នះដើម្បីទទួល ✊✋✌️"}
+    "出拳对决，赢了中奖 ✊✋✌️":{en:"Throw hands — win to score ✊✋✌️",ms:"Lawan — menang untuk menang ✊✋✌️",km:"ប្រកួត — ឈ្នះដើម្បីទទួល ✊✋✌️"},
+    "左路":{en:"Left",ms:"Kiri",km:"ឆ្វេង"},"中路":{en:"Center",ms:"Tengah",km:"កណ្តាល"},"右路":{en:"Right",ms:"Kanan",km:"ស្តាំ"},
+    "石头":{en:"Rock",ms:"Batu",km:"ដុំថ្ម"},"布":{en:"Paper",ms:"Kertas",km:"ក្រដាស"},"剪刀":{en:"Scissors",ms:"Gunting",km:"កន្ត្រៃ"}
   };
   function translateDoc(){
     if(LANG==="zh") return;
