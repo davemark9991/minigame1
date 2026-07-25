@@ -14,17 +14,17 @@
 <link rel="icon" href="/icon-game.svg" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  /* ============== 主题：暗黑赛博朋克 / 高档娱乐城 ============== */
+  /* ============== 主题：炭灰香槟 · 现代低奢 ============== */
   :root{
-    --bg:#1a1a2e; --bg2:#16162a; --panel:#22223e;
-    --gold:#ffd700; --gold2:#ffae00;
-    --neon:#b14aff; --neon2:#00e5ff;
-    --text:#eef0ff; --muted:#8c8fb5;
+    --bg:#16161a; --bg2:#101013; --panel:#1e1e22;
+    --gold:#c9a86a; --gold2:#d8bd85;
+    --neon:#c9a86a; --neon2:#a98c56;
+    --text:#ece7dd; --muted:#8a8578; --line:rgba(201,168,106,.18);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
   html,body{height:100%}
   body{
-    background:radial-gradient(120% 70% at 50% 0%,#26264a,var(--bg) 60%,#0d0d1c);
+    background:radial-gradient(120% 70% at 50% 0%,#232320,var(--bg) 56%,#0e0e10);
     color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC",sans-serif;
     overflow:hidden;user-select:none;
   }
@@ -32,7 +32,7 @@
 
   /* ============== 顶部栏 ============== */
   .topbar{display:flex;align-items:center;justify-content:space-between;
-    padding:12px 16px;background:linear-gradient(180deg,rgba(40,40,80,.6),transparent)}
+    padding:12px 16px;background:linear-gradient(180deg,rgba(42,38,30,.45),transparent)}
   /* 装成 App 独立运行时，避开顶部状态栏/刘海（在 Telegram 内 display-mode 非 standalone，不受影响） */
   @media (display-mode:standalone){ .topbar{ padding-top:calc(12px + env(safe-area-inset-top)) } }
   .who{display:flex;align-items:center;gap:10px}
@@ -43,7 +43,7 @@
   .who .uid{font-size:11px;color:var(--muted)}
   .coins{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.3);
     border:1px solid var(--gold);border-radius:999px;padding:7px 14px;
-    box-shadow:0 0 14px rgba(255,215,0,.3)}
+    box-shadow:0 0 14px rgba(201,168,106,.3)}
   .coin-ico{width:20px;height:20px;border-radius:50%;
     background:radial-gradient(circle at 35% 30%,#fff6c0,var(--gold) 45%,var(--gold2));
     box-shadow:inset 0 0 4px #a87800,0 0 8px var(--gold);
@@ -63,11 +63,11 @@
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .card{position:relative;border-radius:18px;padding:18px 16px;min-height:140px;cursor:pointer;
     background:linear-gradient(160deg,var(--panel),#171730);
-    border:1px solid rgba(177,74,255,.25);overflow:hidden;
+    border:1px solid rgba(201,168,106,.25);overflow:hidden;
     box-shadow:0 8px 22px rgba(0,0,0,.4);transition:transform .12s,box-shadow .2s}
   .card:active{transform:scale(.97)}
   .card::after{content:"";position:absolute;inset:-40% -40% auto auto;width:120px;height:120px;
-    background:radial-gradient(circle,rgba(177,74,255,.35),transparent 70%);filter:blur(6px)}
+    background:radial-gradient(circle,rgba(201,168,106,.35),transparent 70%);filter:blur(6px)}
   .card .emoji{font-size:46px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
   .card .name{margin-top:10px;font-weight:800;font-size:17px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
@@ -77,14 +77,15 @@
     border:1px solid var(--gold);border-radius:999px;padding:3px 10px;white-space:nowrap}
 
   /* ============== 游戏房间通用 ============== */
-  .room{display:flex;flex-direction:column;align-items:center;gap:14px}
-  .back{align-self:flex-start;background:rgba(0,0,0,.3);border:1px solid var(--muted);
+  /* 游戏房间：一屏放下，不滚动 */
+  .scene:has(.room){display:flex;align-items:center;justify-content:center;overflow:hidden;padding:10px 16px 82px}
+  .room{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-height:100%}
+  .back{align-self:flex-start;background:rgba(0,0,0,.3);border:1px solid var(--line);
     color:var(--text);border-radius:999px;padding:8px 16px;font-weight:700;cursor:pointer}
-  .room h2{font-size:20px;font-weight:900;letter-spacing:1px;
-    background:linear-gradient(90deg,var(--neon),var(--neon2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .room h2{font-size:19px;font-weight:900;letter-spacing:1px;color:var(--gold)}
   .play-btn{width:min(82vw,320px);border:none;border-radius:16px;padding:16px;font-size:18px;font-weight:900;
     color:#1a1320;background:linear-gradient(90deg,var(--gold),var(--gold2));cursor:pointer;
-    box-shadow:0 0 24px rgba(255,215,0,.45);transition:transform .08s,opacity .2s}
+    box-shadow:0 0 24px rgba(201,168,106,.45);transition:transform .08s,opacity .2s}
   .play-btn:active{transform:scale(.97)}
   .play-btn:disabled{opacity:.45;box-shadow:none}
   .room canvas{touch-action:none}
@@ -117,7 +118,7 @@
   .scratch-wrap{position:relative;width:min(82vw,330px);height:170px;border-radius:16px;overflow:hidden;
     box-shadow:0 0 22px rgba(0,0,0,.5)}
   .scratch-prize{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    background:linear-gradient(135deg,#241a40,#11111f);color:var(--gold)}
+    background:linear-gradient(135deg,#241a40,#131210);color:var(--gold)}
   .scratch-prize .big{font-size:44px;font-weight:900;text-shadow:0 0 18px var(--gold)}
   #scratchCanvas{position:absolute;inset:0}
 
@@ -125,8 +126,8 @@
   .pop{position:fixed;inset:0;background:rgba(0,0,0,.74);display:none;align-items:center;justify-content:center;z-index:20}
   .pop.show{display:flex;animation:fade .2s}
   @keyframes fade{from{opacity:0}to{opacity:1}}
-  .pop .card2{background:linear-gradient(160deg,#2a2150,#11111f);border:1px solid var(--gold);
-    border-radius:22px;padding:30px 40px;text-align:center;box-shadow:0 0 44px rgba(255,215,0,.4);animation:pumpin .35s}
+  .pop .card2{background:linear-gradient(160deg,#26241f,#131210);border:1px solid var(--gold);
+    border-radius:22px;padding:30px 40px;text-align:center;box-shadow:0 0 44px rgba(201,168,106,.4);animation:pumpin .35s}
   @keyframes pumpin{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
   .pop .big{font-size:46px;font-weight:900;color:var(--gold);text-shadow:0 0 20px var(--gold)}
   .pop .lbl{color:#cdd2ff;margin-top:6px}
@@ -135,7 +136,7 @@
 
   /* ============== 底部导航 ============== */
   .nav{position:absolute;left:0;right:0;bottom:0;display:flex;background:rgba(16,16,32,.92);
-    border-top:1px solid rgba(177,74,255,.3);backdrop-filter:blur(8px)}
+    border-top:1px solid rgba(201,168,106,.3);backdrop-filter:blur(8px)}
   .nav button{flex:1;background:none;border:none;color:var(--muted);padding:11px 0 14px;
     font-size:12px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
   .nav button .ic{font-size:22px}
@@ -147,10 +148,10 @@
   .profile-top .pname{font-size:20px;font-weight:900}
   .profile-top .pid{font-size:12px;color:var(--muted)}
   .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-  .stat{background:var(--panel);border:1px solid rgba(177,74,255,.2);border-radius:16px;padding:16px 10px;text-align:center}
+  .stat{background:var(--panel);border:1px solid rgba(201,168,106,.2);border-radius:16px;padding:16px 10px;text-align:center}
   .stat .v{font-size:22px;font-weight:900;color:var(--gold)}
   .stat .k{font-size:11px;color:var(--muted);margin-top:4px}
-  .fav{margin-top:14px;background:var(--panel);border:1px solid rgba(0,229,255,.25);border-radius:16px;padding:16px;text-align:center}
+  .fav{margin-top:14px;background:var(--panel);border:1px solid rgba(216,189,133,.25);border-radius:16px;padding:16px;text-align:center}
   .fav .k{font-size:12px;color:var(--muted)}
   .fav .v{font-size:18px;font-weight:800;margin-top:4px}
 </style>
@@ -265,7 +266,7 @@
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
         <h2>PENALTY KICK</h2>
-        <div id="soccerField" style="position:relative;width:100%;max-width:320px;height:220px;background:linear-gradient(180deg,#2e7d32,#1b5e20);border-radius:14px;overflow:hidden;border:2px solid #3a2f5a">
+        <div id="soccerField" style="position:relative;width:100%;max-width:320px;height:min(210px,32vh);background:linear-gradient(180deg,#2e7d32,#1b5e20);border-radius:14px;overflow:hidden;border:1px solid var(--line)">
           <div style="position:absolute;top:10px;left:15%;right:15%;height:52px;border:3px solid #fff;border-bottom:none;border-radius:4px 4px 0 0"></div>
           <div id="keeper" style="position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:34px;transition:left .28s">🧤</div>
           <div id="ball" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:30px;transition:all .5s cubic-bezier(.34,1.2,.4,1)">⚽</div>
@@ -286,7 +287,7 @@
         <button class="back" data-back>← 返回大厅</button>
         <h2>ROCK · PAPER · SCISSORS</h2>
         <div style="display:flex;align-items:center;justify-content:center;gap:22px;font-size:58px;min-height:84px">
-          <span id="rpsYou">✊</span><span style="font-size:22px;color:#9a9cc8">VS</span><span id="rpsOpp">✋</span>
+          <span id="rpsYou">✊</span><span style="font-size:22px;color:#8a8578">VS</span><span id="rpsOpp">✋</span>
         </div>
         <div id="rpsResult" style="font-size:28px;font-weight:900;min-height:34px;margin:4px 0"></div>
         <div style="display:flex;gap:14px">
@@ -412,17 +413,17 @@
     var next = null; for (var i = 0; i < tiers.length; i++) { if (tiers[i].level === cur + 1) next = tiers[i]; }
     var bar = next ? Math.max(0, Math.min(100, Math.round((dep - curMin) / ((next.min - curMin) || 1) * 100))) : 100;
     box.innerHTML =
-      '<div style="background:linear-gradient(135deg,#2a1e4a,#141225);border:1px solid #3a2f5a;border-radius:14px;padding:16px;margin:14px 0">' +
+      '<div style="background:linear-gradient(135deg,#201f1c,#141311);border:1px solid #2b2925;border-radius:14px;padding:16px;margin:14px 0">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
-          '<div><div style="color:#c9a3ff;font-size:12px">VIP</div><div style="font-size:22px;font-weight:900;color:#ffd700">Lv.' + cur + ' · ' + (d.vip_name || '') + '</div></div>' +
-          '<div style="text-align:right;color:#9a9cc8;font-size:12px">累计存款 / Total<br><b style="color:#fff;font-size:16px">' + Number(dep).toLocaleString() + '</b></div>' +
+          '<div><div style="color:#c9a86a;font-size:12px">VIP</div><div style="font-size:22px;font-weight:900;color:#c9a86a">Lv.' + cur + ' · ' + (d.vip_name || '') + '</div></div>' +
+          '<div style="text-align:right;color:#8a8578;font-size:12px">累计存款 / Total<br><b style="color:#fff;font-size:16px">' + Number(dep).toLocaleString() + '</b></div>' +
         '</div>' +
         (next
-          ? '<div style="margin-top:10px"><div style="height:8px;background:#241d3a;border-radius:5px;overflow:hidden"><div style="height:100%;width:' + bar + '%;background:linear-gradient(90deg,#b14aff,#ffd700)"></div></div>' +
-            '<div style="color:#9a9cc8;font-size:11px;margin-top:4px">距 ' + next.name + ' (Lv.' + next.level + ') 还差 ' + Math.max(0, next.min - dep).toLocaleString() + '</div></div>'
-          : '<div style="margin-top:10px;color:#ffd700;font-size:12px">已达最高等级 🏆</div>') +
+          ? '<div style="margin-top:10px"><div style="height:8px;background:#26241f;border-radius:5px;overflow:hidden"><div style="height:100%;width:' + bar + '%;background:linear-gradient(90deg,#c9a86a,#c9a86a)"></div></div>' +
+            '<div style="color:#8a8578;font-size:11px;margin-top:4px">距 ' + next.name + ' (Lv.' + next.level + ') 还差 ' + Math.max(0, next.min - dep).toLocaleString() + '</div></div>'
+          : '<div style="margin-top:10px;color:#c9a86a;font-size:12px">已达最高等级 🏆</div>') +
         '<div style="display:flex;gap:6px;margin-top:12px">' +
-          tiers.map(function (t) { return '<div style="flex:1;text-align:center;padding:6px 2px;border-radius:8px;font-size:10px;' + (t.level === cur ? 'background:rgba(255,215,0,.15);color:#ffd700;font-weight:700' : 'color:#6a6a8a') + '">' + t.name + '<br><span style="font-size:9px">' + Number(t.min).toLocaleString() + '</span></div>'; }).join('') +
+          tiers.map(function (t) { return '<div style="flex:1;text-align:center;padding:6px 2px;border-radius:8px;font-size:10px;' + (t.level === cur ? 'background:rgba(201,168,106,.15);color:#c9a86a;font-weight:700' : 'color:#8a8578') + '">' + t.name + '<br><span style="font-size:9px">' + Number(t.min).toLocaleString() + '</span></div>'; }).join('') +
         '</div>' +
       '</div>';
   }
@@ -487,9 +488,9 @@
     const R = cv.width / 2;
     // 奖区（视觉占位；实际入账以服务端 award 为准）
     const slots = [
-      { t: "谢谢参与", c: "#3a2f5a" }, { t: "10币", c: "#5a3aa0" }, { t: "50币", c: "#7a2fb0" },
-      { t: "100币", c: "#b14aff" }, { t: "大奖!", c: "#ffd700" }, { t: "20币", c: "#4a2f90" },
-      { t: "80币", c: "#8e2fb8" }, { t: "30币", c: "#6a3aa6" }
+      { t: "谢谢参与", c: "#26241f" }, { t: "10币", c: "#4a4133" }, { t: "50币", c: "#5f5340" },
+      { t: "100币", c: "#c9a86a" }, { t: "大奖!", c: "#d8bd85" }, { t: "20币", c: "#3a352b" },
+      { t: "80币", c: "#6b5a3f" }, { t: "30币", c: "#403829" }
     ];
     let angle = 0, spinning = false, glow = -1;
     function draw() {
@@ -505,7 +506,7 @@
         ctx.fillStyle = slots[i].t === "大奖!" ? "#1a1320" : "#fff"; ctx.font = "bold 26px sans-serif";
         ctx.fillText(slots[i].t, R - 30, 9); ctx.restore();
       }
-      ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = "#ffd700"; ctx.fill(); ctx.restore();
+      ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fillStyle = "#c9a86a"; ctx.fill(); ctx.restore();
     }
     function awardToSlot(award) {
       if (award >= 120) return 4; // 大奖
@@ -560,16 +561,16 @@
     function reset() { build(); ball = null; trail = []; render(); }
     function render() {
       ctx.clearRect(0, 0, W, H);
-      for (let k = 0; k < pegs.length; k++) { const p = pegs[k]; ctx.beginPath(); ctx.arc(p.x, p.y, pegR, 0, Math.PI * 2); ctx.fillStyle = "#b14aff"; ctx.shadowColor = "#b14aff"; ctx.shadowBlur = 8; ctx.fill(); }
+      for (let k = 0; k < pegs.length; k++) { const p = pegs[k]; ctx.beginPath(); ctx.arc(p.x, p.y, pegR, 0, Math.PI * 2); ctx.fillStyle = "#c9a86a"; ctx.shadowColor = "#c9a86a"; ctx.shadowBlur = 8; ctx.fill(); }
       ctx.shadowBlur = 0;
       const sw = W / mult.length;
       for (let i = 0; i < mult.length; i++) {
-        ctx.fillStyle = i % 2 ? "#2a2150" : "#221a40"; ctx.fillRect(i * sw, H - 34, sw, 34);
-        ctx.fillStyle = mult[i] >= 5 ? "#ffd700" : "#9a9cc8"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+        ctx.fillStyle = i % 2 ? "#26241f" : "#1c1a16"; ctx.fillRect(i * sw, H - 34, sw, 34);
+        ctx.fillStyle = mult[i] >= 5 ? "#c9a86a" : "#8a8578"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
         ctx.fillText(mult[i] + "x", i * sw + sw / 2, H - 13);
       }
-      for (let i = 0; i < trail.length; i++) { const a = i / trail.length; ctx.beginPath(); ctx.arc(trail[i].x, trail[i].y, ballR * a, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,229,255," + (a * 0.5) + ")"; ctx.fill(); }
-      if (ball) { ctx.beginPath(); ctx.arc(ball.x, ball.y, ballR, 0, Math.PI * 2); ctx.fillStyle = "#00e5ff"; ctx.shadowColor = "#00e5ff"; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0; }
+      for (let i = 0; i < trail.length; i++) { const a = i / trail.length; ctx.beginPath(); ctx.arc(trail[i].x, trail[i].y, ballR * a, 0, Math.PI * 2); ctx.fillStyle = "rgba(216,189,133," + (a * 0.5) + ")"; ctx.fill(); }
+      if (ball) { ctx.beginPath(); ctx.arc(ball.x, ball.y, ballR, 0, Math.PI * 2); ctx.fillStyle = "#d8bd85"; ctx.shadowColor = "#d8bd85"; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0; }
     }
     async function drop() {
       if (busy) return;
@@ -607,7 +608,7 @@
     }
     function flashSlot(idx) { // 落槽放大闪烁吸收
       const sw = W / mult.length; let n = 0;
-      function blink() { render(); ctx.fillStyle = "rgba(255,215,0," + Math.abs(Math.sin(n / 2)) + ")"; ctx.fillRect(idx * sw, H - 34, sw, 34); if (n++ < 8) requestAnimationFrame(blink); else render(); }
+      function blink() { render(); ctx.fillStyle = "rgba(201,168,106," + Math.abs(Math.sin(n / 2)) + ")"; ctx.fillRect(idx * sw, H - 34, sw, 34); if (n++ < 8) requestAnimationFrame(blink); else render(); }
       blink();
     }
     $("plinkoDrop").addEventListener("click", drop);
@@ -622,7 +623,7 @@
     let busy = false;
     function particles(cx, cy) {
       const ps = [];
-      for (let i = 0; i < 36; i++) ps.push({ x: cx, y: cy, vx: (Math.random() - 0.5) * 7, vy: (Math.random() - 0.9) * 8, life: 1, c: Math.random() < 0.5 ? "#ffd700" : "#fff3b0" });
+      for (let i = 0; i < 36; i++) ps.push({ x: cx, y: cy, vx: (Math.random() - 0.5) * 7, vy: (Math.random() - 0.9) * 8, life: 1, c: Math.random() < 0.5 ? "#c9a86a" : "#fff3b0" });
       function tick() {
         pctx.clearRect(0, 0, pcv.width, pcv.height); let alive = false;
         for (let i = 0; i < ps.length; i++) {
@@ -744,7 +745,7 @@
     });
     async function play(choice) {
       if (busy) return; busy = true;
-      $("rpsResult").textContent = "…"; $("rpsResult").style.color = "#9a9cc8";
+      $("rpsResult").textContent = "…"; $("rpsResult").style.color = "#8a8578";
       var r = await requestAward("剪刀石头布");
       if (!r.ok) { popResult(r.error, false); $("rpsResult").textContent = ""; busy = false; return; }
       var win = Number(r.award) > 0;
@@ -815,9 +816,9 @@
     var opts=[["zh","中文"],["en","English"],["ms","Bahasa Melayu"],["km","ខ្មែរ"]];
     var ov=document.createElement("div");
     ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
-    ov.innerHTML='<div style="background:#16121f;border:1px solid #3a2f5a;border-radius:16px;padding:18px;width:280px;max-width:88vw;box-shadow:0 10px 40px rgba(0,0,0,.5)">'+
-      '<div style="color:#c9a3ff;font-size:13px;margin-bottom:12px;text-align:center">选择语言 · Language</div>'+
-      opts.map(function(o){return '<button data-l="'+o[0]+'" style="display:flex;align-items:center;width:100%;margin:6px 0;padding:12px;border-radius:10px;border:1px solid #3a2f5a;background:'+(o[0]===LANG?"rgba(177,74,255,.22)":"#221a3a")+';color:#fff;font-size:15px;cursor:pointer">'+FLAGS[o[0]]+o[1]+'</button>';}).join("")+
+    ov.innerHTML='<div style="background:#1a1a1e;border:1px solid #2b2925;border-radius:16px;padding:18px;width:280px;max-width:88vw;box-shadow:0 10px 40px rgba(0,0,0,.5)">'+
+      '<div style="color:#c9a86a;font-size:13px;margin-bottom:12px;text-align:center">选择语言 · Language</div>'+
+      opts.map(function(o){return '<button data-l="'+o[0]+'" style="display:flex;align-items:center;width:100%;margin:6px 0;padding:12px;border-radius:10px;border:1px solid #2b2925;background:'+(o[0]===LANG?"rgba(201,168,106,.22)":"#232320")+';color:#fff;font-size:15px;cursor:pointer">'+FLAGS[o[0]]+o[1]+'</button>';}).join("")+
       '</div>';
     ov.onclick=function(e){ if(e.target===ov) document.body.removeChild(ov); };
     ov.querySelectorAll("button[data-l]").forEach(function(btn){ btn.onclick=function(){ try{ localStorage.setItem("mg_game_lang", btn.getAttribute("data-l")); }catch(e){} location.reload(); }; });
