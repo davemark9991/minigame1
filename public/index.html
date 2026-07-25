@@ -174,7 +174,7 @@
   <div class="stage">
     <!-- ===== 游戏大厅 ===== -->
     <section class="scene active" id="scene-lobby">
-      <div class="h-title">🎮 游戏大厅 · GAME HALL</div>
+      <div class="h-title">🎮 游戏大厅</div>
       <div class="grid">
         <div class="card" data-game="wheel"><div class="emoji">🎡</div><div class="name">幸运大转盘</div><div class="desc">物理惯性 · 大奖闪烁</div><div class="play">GO ▶</div></div>
         <div class="card" data-game="plinko"><div class="emoji">🔵</div><div class="name">普林科弹珠</div><div class="desc">真实碰撞 · 倍率槽</div><div class="play">GO ▶</div></div>
@@ -188,7 +188,7 @@
 
     <!-- ===== 个人中心 ===== -->
     <section class="scene" id="scene-profile">
-      <div class="h-title">👤 个人中心 · PROFILE</div>
+      <div class="h-title">👤 个人中心</div>
       <div class="profile-top">
         <div class="avatar" id="avatar2"></div>
         <div class="pname" id="nick2">玩家</div>
@@ -205,7 +205,7 @@
 
     <!-- ===== VIP / 等级 ===== -->
     <section class="scene" id="scene-vip">
-      <div class="h-title">👑 VIP 等级 · RANKING</div>
+      <div class="h-title">👑 VIP 等级</div>
       <div id="vipBox"></div>
       <p class="tip" style="margin-top:12px">💎 累计存款越多，VIP 等级越高。存款请联系客服充值。</p>
     </section>
@@ -214,7 +214,7 @@
     <section class="scene" id="scene-wheel">
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
-        <h2>LUCKY WHEEL</h2>
+        <h2>幸运大转盘</h2>
         <div class="wheel-wrap"><div class="pointer" id="wheelPointer"></div><canvas id="wheelCanvas" width="640" height="640" style="width:100%"></canvas></div>
         <button class="play-btn" id="wheelSpin">🎰 SPIN</button>
         <p class="tip">点击 SPIN，转盘真实物理减速停在中奖区 ✨</p>
@@ -225,7 +225,7 @@
     <section class="scene" id="scene-plinko">
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
-        <h2>PLINKO</h2>
+        <h2>普林科弹珠</h2>
         <canvas id="plinkoCanvas" width="360" height="440" style="width:min(90vw,360px)"></canvas>
         <button class="play-btn" id="plinkoDrop">🔵 投放弹珠</button>
         <p class="tip">小球真实碰撞反弹，落入倍率槽 🎯</p>
@@ -236,7 +236,7 @@
     <section class="scene" id="scene-egg">
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
-        <h2>GOLDEN EGG</h2>
+        <h2>砸金蛋</h2>
         <div class="eggs" id="eggs">
           <div class="egg" data-i="0"><div class="hammer">🔨</div><div class="body"></div></div>
           <div class="egg" data-i="1"><div class="hammer">🔨</div><div class="body"></div></div>
@@ -251,7 +251,7 @@
     <section class="scene" id="scene-scratch">
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
-        <h2>SCRATCH CARD</h2>
+        <h2>刮刮乐</h2>
         <div class="scratch-wrap">
           <div class="scratch-prize"><div class="big" id="scratchPrize">?</div><div>刮开看看手气</div></div>
           <canvas id="scratchCanvas"></canvas>
@@ -265,7 +265,7 @@
     <section class="scene" id="scene-soccer">
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
-        <h2>PENALTY KICK</h2>
+        <h2>点球射门</h2>
         <div id="soccerField" style="position:relative;width:100%;max-width:320px;height:min(210px,32vh);background:linear-gradient(180deg,#2e7d32,#1b5e20);border-radius:14px;overflow:hidden;border:1px solid var(--line)">
           <div style="position:absolute;top:10px;left:15%;right:15%;height:52px;border:3px solid #fff;border-bottom:none;border-radius:4px 4px 0 0"></div>
           <div id="keeper" style="position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:34px;transition:left .28s">🧤</div>
@@ -285,7 +285,7 @@
     <section class="scene" id="scene-rps">
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
-        <h2>ROCK · PAPER · SCISSORS</h2>
+        <h2>剪刀石头布</h2>
         <div style="display:flex;align-items:center;justify-content:center;gap:22px;font-size:58px;min-height:84px">
           <span id="rpsYou">✊</span><span style="font-size:22px;color:#8a8578">VS</span><span id="rpsOpp">✋</span>
         </div>
@@ -327,6 +327,10 @@
   const initData = tg ? tg.initData : "";
   const tgUser = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
   const $ = (id) => document.getElementById(id);
+
+  // 当前语言（与语言脚本共用 localStorage）+ 取词函数（带变量的动态文案用它）
+  var mgLang = "zh"; try { var _l = localStorage.getItem("mg_game_lang"); if (["zh","en","ms","km"].indexOf(_l) >= 0) mgLang = _l; } catch (e) {}
+  function GT(zh, en, ms, km) { return mgLang === "en" ? en : mgLang === "ms" ? ms : mgLang === "km" ? km : zh; }
 
   // ---------- 音效占位接口（把注释里的 URL 换成真实音频，并启用 new Audio 即可生效） ----------
   const SFX = {
@@ -400,7 +404,7 @@
       const res = await api("/api/profile");
       if (res.data && res.data.ok) {
         setBalance(res.data.balance || 0); setSpins(res.data.spins || 0);
-        if (res.data.player_id) { var j = $("joined"); if (j) j.textContent = "会员ID / Member ID：" + res.data.player_id; }
+        if (res.data.player_id) { var j = $("joined"); if (j) j.textContent = GT("会员ID：", "Member ID: ", "ID Ahli: ", "លេខសមាជិក៖ ") + res.data.player_id; }
         renderVip(res.data);
       }
     } catch (e) {}
@@ -416,12 +420,12 @@
       '<div style="background:linear-gradient(135deg,#201f1c,#141311);border:1px solid #2b2925;border-radius:14px;padding:16px;margin:14px 0">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<div><div style="color:#c9a86a;font-size:12px">VIP</div><div style="font-size:22px;font-weight:900;color:#c9a86a">Lv.' + cur + ' · ' + (d.vip_name || '') + '</div></div>' +
-          '<div style="text-align:right;color:#8a8578;font-size:12px">累计存款 / Total<br><b style="color:#fff;font-size:16px">' + Number(dep).toLocaleString() + '</b></div>' +
+          '<div style="text-align:right;color:#8a8578;font-size:12px">' + GT("累计存款","Total deposit","Jumlah deposit","ប្រាក់បញ្ញើសរុប") + '<br><b style="color:#f2ead9;font-size:16px">' + Number(dep).toLocaleString() + '</b></div>' +
         '</div>' +
         (next
-          ? '<div style="margin-top:10px"><div style="height:8px;background:#26241f;border-radius:5px;overflow:hidden"><div style="height:100%;width:' + bar + '%;background:linear-gradient(90deg,#c9a86a,#c9a86a)"></div></div>' +
-            '<div style="color:#8a8578;font-size:11px;margin-top:4px">距 ' + next.name + ' (Lv.' + next.level + ') 还差 ' + Math.max(0, next.min - dep).toLocaleString() + '</div></div>'
-          : '<div style="margin-top:10px;color:#c9a86a;font-size:12px">已达最高等级 🏆</div>') +
+          ? '<div style="margin-top:10px"><div style="height:8px;background:#26241f;border-radius:5px;overflow:hidden"><div style="height:100%;width:' + bar + '%;background:linear-gradient(90deg,#a98c56,#d8bd85)"></div></div>' +
+            '<div style="color:#8a8578;font-size:11px;margin-top:4px">' + GT("距 "+next.name+" 还差 "+Math.max(0,next.min-dep).toLocaleString(), next.name+": "+Math.max(0,next.min-dep).toLocaleString()+" to go", next.name+": lagi "+Math.max(0,next.min-dep).toLocaleString(), next.name+": នៅខ្វះ "+Math.max(0,next.min-dep).toLocaleString()) + '</div></div>'
+          : '<div style="margin-top:10px;color:#c9a86a;font-size:12px">' + GT("已达最高等级 🏆","Max level reached 🏆","Tahap tertinggi 🏆","កម្រិតខ្ពស់បំផុត 🏆") + '</div>') +
         '<div style="display:flex;gap:6px;margin-top:12px">' +
           tiers.map(function (t) { return '<div style="flex:1;text-align:center;padding:6px 2px;border-radius:8px;font-size:10px;' + (t.level === cur ? 'background:rgba(201,168,106,.15);color:#c9a86a;font-weight:700' : 'color:#8a8578') + '">' + t.name + '<br><span style="font-size:9px">' + Number(t.min).toLocaleString() + '</span></div>'; }).join('') +
         '</div>' +
@@ -775,13 +779,17 @@
   if(urlLang && VALID.indexOf(urlLang)>=0){ try{ localStorage.setItem("mg_game_lang", urlLang); }catch(e){} }
   var LANG = "zh"; try{ var l=localStorage.getItem("mg_game_lang"); if(VALID.indexOf(l)>=0) LANG=l; }catch(e){}
   var TR = {
+    "🎫 买一张新卡":{en:"🎫 New card",ms:"🎫 Kad baru",km:"🎫 កាតថ្មី"},
+    "刮开看看手气":{en:"Scratch to reveal",ms:"Calar untuk lihat",km:"កោសមើល"},
+    "用手指涂抹刮开，刮开 60% 自动揭晓 🪙":{en:"Scratch with your finger — 60% auto-reveals 🪙",ms:"Calar dengan jari — 60% dedah 🪙",km:"កោសដោយម្រាមដៃ — 60% បង្ហាញ 🪙"},
+    "VS":{en:"VS",ms:"VS",km:"VS"},
     "玩家":{en:"Player",ms:"Pemain",km:"អ្នកលេង"},
-    "🎮 游戏大厅 · GAME HALL":{en:"🎮 GAME HALL",ms:"🎮 LOBI PERMAINAN",km:"🎮 សាលហ្គេម"},
+    "🎮 游戏大厅":{en:"🎮 GAME HALL",ms:"🎮 LOBI PERMAINAN",km:"🎮 សាលហ្គេម"},
     "幸运大转盘":{en:"Lucky Wheel",ms:"Roda Bertuah",km:"កង់សំណាង"},"物理惯性 · 大奖闪烁":{en:"Physics spin · jackpot",ms:"Putaran fizik · jackpot",km:"បង្វិល · ជេកផត"},
     "普林科弹珠":{en:"Plinko",ms:"Plinko",km:"Plinko"},"真实碰撞 · 倍率槽":{en:"Real bounce · multipliers",ms:"Lantunan · pengganda",km:"ការប៉ះ · មេគុណ"},
     "砸金蛋":{en:"Golden Egg",ms:"Telur Emas",km:"ស៊ុតមាស"},"大锤砸下 · 碎屑粒子":{en:"Hammer smash · particles",ms:"Tukul · serpihan",km:"ញញួរ · ភាគល្អិត"},
     "刮刮乐":{en:"Scratch",ms:"Calar",km:"កោស"},"手指涂抹 · 自动揭晓":{en:"Scratch to reveal",ms:"Calar untuk dedah",km:"កោសដើម្បីបង្ហាញ"},
-    "👤 个人中心 · PROFILE":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
+    "👤 个人中心":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
     "总游戏次数":{en:"Total plays",ms:"Jumlah main",km:"ចំនួនលេងសរុប"},"累计赢取金币":{en:"Total won",ms:"Jumlah menang",km:"ឈ្នះសរុប"},"当前余额":{en:"Balance",ms:"Baki",km:"សមតុល្យ"},"最喜欢的游戏":{en:"Favorite",ms:"Kegemaran",km:"ចូលចិត្ត"},"暂无":{en:"None",ms:"Tiada",km:"គ្មាន"},
     "← 返回大厅":{en:"← Back",ms:"← Kembali",km:"← ត្រឡប់"},"🎰 SPIN":{en:"🎰 SPIN",ms:"🎰 PUTAR",km:"🎰 បង្វិល"},"游戏大厅":{en:"Lobby",ms:"Lobi",km:"សាល"},"个人中心":{en:"Profile",ms:"Profil",km:"ប្រវត្តិរូប"},
     "💰 当前积分":{en:"💰 Balance",ms:"💰 Baki",km:"💰 សមតុល្យ"},
@@ -790,7 +798,7 @@
     "积分不足，请联系客服充值":{en:"Not enough points — contact support",ms:"Mata tidak cukup — hubungi khidmat",km:"ពិន្ទុមិនគ្រប់ — ទាក់ទងជំនួយ"},"该游戏暂时关闭":{en:"This game is closed",ms:"Permainan ini ditutup",km:"ហ្គេមនេះបានបិទ"},
     "账号已被封禁":{en:"Account banned",ms:"Akaun disekat",km:"គណនីត្រូវបានហាមឃាត់"},"请从 Telegram 内打开本游戏":{en:"Open this game inside Telegram",ms:"Buka permainan dalam Telegram",km:"បើកហ្គេមក្នុង Telegram"},"请先在机器人发送 /start":{en:"Send /start to the bot first",ms:"Hantar /start kepada bot dahulu",km:"ផ្ញើ /start ទៅ bot ជាមុនសិន"},
     "收下金币":{en:"Collect",ms:"Kutip",km:"ទទួល"},
-    "👑 VIP 等级 · RANKING":{en:"👑 VIP · RANKING",ms:"👑 VIP · RANKING",km:"👑 VIP · RANKING"},
+    "👑 VIP 等级":{en:"👑 VIP",ms:"👑 VIP · RANKING",km:"👑 VIP · RANKING"},
     "💎 累计存款越多，VIP 等级越高。存款请联系客服充值。":{en:"💎 The more you deposit, the higher your VIP. Contact support to top up.",ms:"💎 Lebih banyak deposit, VIP lebih tinggi. Hubungi khidmat untuk tambah nilai.",km:"💎 ដាក់ប្រាក់កាន់តែច្រើន VIP កាន់តែខ្ពស់។ ទាក់ទងជំនួយ។"},
     "点球射门":{en:"Penalty Kick",ms:"Sepakan Penalti",km:"ការទាត់ពិន័យ"},"滑动射门 · 破门得分":{en:"Kick · score to win",ms:"Tendang · jaring menang",km:"ទាត់ · ស៊ុតបញ្ចូល"},
     "剪刀石头布":{en:"Rock Paper Scissors",ms:"Batu Kertas Gunting",km:"ដុំថ្ម ក្រដាស កន្ត្រៃ"},"出拳对决 · 赢家通吃":{en:"Throw hands · winner takes all",ms:"Lawan · menang ambil semua",km:"ប្រកួត · អ្នកឈ្នះយកអស់"},
