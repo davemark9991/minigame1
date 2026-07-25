@@ -141,7 +141,9 @@ const GAME_DEFS = [
   { key: "wheel",   label: "🎡 幸运大转盘", bet: 50 },
   { key: "plinko",  label: "🔵 普林科弹珠", bet: 50 },
   { key: "egg",     label: "🥚 砸金蛋",     bet: 100 },
-  { key: "scratch", label: "🎫 刮刮乐",     bet: 50 }
+  { key: "scratch", label: "🎫 刮刮乐",     bet: 50 },
+  { key: "soccer",  label: "⚽ 点球射门",   bet: 50 },
+  { key: "rps",     label: "✊ 剪刀石头布", bet: 50 }
 ];
 const GAME_KEYS = GAME_DEFS.map((g) => g.key);
 

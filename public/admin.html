@@ -567,7 +567,7 @@ function renderTx(rows){
 }
 
 /* ---------- Settings ---------- */
-const GAME_LABELS = { wheel:"🎡 幸运大转盘", plinko:"🔵 普林科弹珠", egg:"🥚 砸金蛋", scratch:"🎫 刮刮乐" };
+const GAME_LABELS = { wheel:"🎡 幸运大转盘", plinko:"🔵 普林科弹珠", egg:"🥚 砸金蛋", scratch:"🎫 刮刮乐", soccer:"⚽ 点球射门", rps:"✊ 剪刀石头布" };
 let setData = null;
 async function viewSettings(){
   try{ setData=(await api("settings/get")).settings; }

@@ -179,8 +179,10 @@
         <div class="card" data-game="plinko"><div class="emoji">🔵</div><div class="name">普林科弹珠</div><div class="desc">真实碰撞 · 倍率槽</div><div class="play">GO ▶</div></div>
         <div class="card" data-game="egg"><div class="emoji">🥚</div><div class="name">砸金蛋</div><div class="desc">大锤砸下 · 碎屑粒子</div><div class="play">GO ▶</div></div>
         <div class="card" data-game="scratch"><div class="emoji">🎫</div><div class="name">刮刮乐</div><div class="desc">手指涂抹 · 自动揭晓</div><div class="play">GO ▶</div></div>
+        <div class="card" data-game="soccer"><div class="emoji">⚽</div><div class="name">点球射门</div><div class="desc">滑动射门 · 破门得分</div><div class="play">GO ▶</div></div>
+        <div class="card" data-game="rps"><div class="emoji">✊</div><div class="name">剪刀石头布</div><div class="desc">出拳对决 · 赢家通吃</div><div class="play">GO ▶</div></div>
       </div>
-      <p class="tip" style="margin-top:16px">💰 当前积分 <span id="lobbyBal">0</span> · 下注游戏赢积分，积分不足请联系客服充值</p>
+      <span id="lobbyBal" style="display:none"></span>
     </section>
 
     <!-- ===== 个人中心 ===== -->
@@ -255,6 +257,44 @@
         </div>
         <button class="play-btn" id="scratchNew">🎫 买一张新卡</button>
         <p class="tip">用手指涂抹刮开，刮开 60% 自动揭晓 🪙</p>
+      </div>
+    </section>
+
+    <!-- ===== 点球射门 ===== -->
+    <section class="scene" id="scene-soccer">
+      <div class="room">
+        <button class="back" data-back>← 返回大厅</button>
+        <h2>PENALTY KICK</h2>
+        <div id="soccerField" style="position:relative;width:100%;max-width:320px;height:220px;background:linear-gradient(180deg,#2e7d32,#1b5e20);border-radius:14px;overflow:hidden;border:2px solid #3a2f5a">
+          <div style="position:absolute;top:10px;left:15%;right:15%;height:52px;border:3px solid #fff;border-bottom:none;border-radius:4px 4px 0 0"></div>
+          <div id="keeper" style="position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:34px;transition:left .28s">🧤</div>
+          <div id="ball" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:30px;transition:all .5s cubic-bezier(.34,1.2,.4,1)">⚽</div>
+        </div>
+        <div id="soccerResult" style="font-size:26px;font-weight:900;min-height:32px;margin:6px 0"></div>
+        <div style="display:flex;gap:12px">
+          <button class="play-btn soccer-dir" data-d="left" style="padding:12px 18px">⬅️</button>
+          <button class="play-btn soccer-dir" data-d="center" style="padding:12px 18px">⚽ 射门</button>
+          <button class="play-btn soccer-dir" data-d="right" style="padding:12px 18px">➡️</button>
+        </div>
+        <p class="tip">选方向射门，破门即中奖 ⚽</p>
+      </div>
+    </section>
+
+    <!-- ===== 剪刀石头布 ===== -->
+    <section class="scene" id="scene-rps">
+      <div class="room">
+        <button class="back" data-back>← 返回大厅</button>
+        <h2>ROCK · PAPER · SCISSORS</h2>
+        <div style="display:flex;align-items:center;justify-content:center;gap:22px;font-size:58px;min-height:84px">
+          <span id="rpsYou">✊</span><span style="font-size:22px;color:#9a9cc8">VS</span><span id="rpsOpp">✋</span>
+        </div>
+        <div id="rpsResult" style="font-size:28px;font-weight:900;min-height:34px;margin:4px 0"></div>
+        <div style="display:flex;gap:14px">
+          <button class="play-btn rps-btn" data-c="rock" style="font-size:30px;padding:12px 20px">✊</button>
+          <button class="play-btn rps-btn" data-c="paper" style="font-size:30px;padding:12px 20px">✋</button>
+          <button class="play-btn rps-btn" data-c="scissors" style="font-size:30px;padding:12px 20px">✌️</button>
+        </div>
+        <p class="tip">出拳对决，赢了中奖 ✊✋✌️</p>
       </div>
     </section>
   </div>
@@ -388,7 +428,7 @@
   }
 
   // 真正发奖：服务端决定 award；返回 {ok, award, balance, spins} 或 {ok:false, error}
-  var GAME_KEY = { "幸运大转盘": "wheel", "普林科弹珠": "plinko", "砸金蛋": "egg", "刮刮乐": "scratch" };
+  var GAME_KEY = { "幸运大转盘": "wheel", "普林科弹珠": "plinko", "砸金蛋": "egg", "刮刮乐": "scratch", "点球射门": "soccer", "剪刀石头布": "rps" };
   async function requestAward(gameName) {
     sfx("spin");
     const res = await api("/api/spin", { game: GAME_KEY[gameName] || "wheel" });
@@ -663,6 +703,62 @@
     return { newCard: newCard };
   })();
 
+  /* =====================================================================
+   * ⑤ 点球射门（选方向 -> 服务端派彩 -> 破门/被扑动画）
+   * ===================================================================== */
+  (function () {
+    var busy = false;
+    document.querySelectorAll(".soccer-dir").forEach(function (b) {
+      b.addEventListener("click", function () { sfx("click"); kick(b.dataset.d); });
+    });
+    async function kick(dir) {
+      if (busy) return; busy = true;
+      var r = await requestAward("点球射门");
+      if (!r.ok) { popResult(r.error, false); busy = false; return; }
+      var win = Number(r.award) > 0;
+      var ball = $("ball"), keeper = $("keeper");
+      var pos = dir === "left" ? "18%" : dir === "right" ? "82%" : "50%";
+      // 中奖：门将扑错方向；未中：门将扑对方向
+      keeper.style.left = win ? (dir === "center" ? "22%" : "50%") : pos;
+      ball.style.bottom = "58%"; ball.style.left = pos;
+      setBalance(r.balance);
+      $("soccerResult").textContent = win ? "GOAL! ⚽" : "SAVED 🧤";
+      $("soccerResult").style.color = win ? "#34d399" : "#f87171";
+      if (win) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
+      setTimeout(function () {
+        popResult(r.award, true);
+        afterPopFn = function () { ball.style.bottom = "14px"; ball.style.left = "50%"; keeper.style.left = "50%"; $("soccerResult").textContent = ""; busy = false; };
+      }, 650);
+    }
+  })();
+
+  /* =====================================================================
+   * ⑥ 剪刀石头布（出拳 -> 服务端派彩 -> 对手手势 + 胜负）
+   * ===================================================================== */
+  (function () {
+    var busy = false, hands = { rock: "✊", paper: "✋", scissors: "✌️" };
+    var beats = { rock: "scissors", paper: "rock", scissors: "paper" };
+    var loses = { rock: "paper", paper: "scissors", scissors: "rock" };
+    document.querySelectorAll(".rps-btn").forEach(function (b) {
+      b.addEventListener("click", function () { sfx("click"); play(b.dataset.c); });
+    });
+    async function play(choice) {
+      if (busy) return; busy = true;
+      $("rpsResult").textContent = "…"; $("rpsResult").style.color = "#9a9cc8";
+      var r = await requestAward("剪刀石头布");
+      if (!r.ok) { popResult(r.error, false); $("rpsResult").textContent = ""; busy = false; return; }
+      var win = Number(r.award) > 0;
+      var opp = win ? beats[choice] : loses[choice];
+      $("rpsYou").textContent = hands[choice];
+      $("rpsOpp").textContent = hands[opp];
+      $("rpsResult").textContent = win ? "WIN" : "LOSE";
+      $("rpsResult").style.color = win ? "#34d399" : "#f87171";
+      setBalance(r.balance);
+      if (win) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
+      setTimeout(function () { popResult(r.award, true); afterPopFn = function () { busy = false; }; }, 700);
+    }
+  })();
+
   // ---------- 启动 ----------
   if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
   renderUser(); renderStats(); loadProfile();
@@ -694,7 +790,11 @@
     "账号已被封禁":{en:"Account banned",ms:"Akaun disekat",km:"គណនីត្រូវបានហាមឃាត់"},"请从 Telegram 内打开本游戏":{en:"Open this game inside Telegram",ms:"Buka permainan dalam Telegram",km:"បើកហ្គេមក្នុង Telegram"},"请先在机器人发送 /start":{en:"Send /start to the bot first",ms:"Hantar /start kepada bot dahulu",km:"ផ្ញើ /start ទៅ bot ជាមុនសិន"},
     "收下金币":{en:"Collect",ms:"Kutip",km:"ទទួល"},
     "👑 VIP 等级 · RANKING":{en:"👑 VIP · RANKING",ms:"👑 VIP · RANKING",km:"👑 VIP · RANKING"},
-    "💎 累计存款越多，VIP 等级越高。存款请联系客服充值。":{en:"💎 The more you deposit, the higher your VIP. Contact support to top up.",ms:"💎 Lebih banyak deposit, VIP lebih tinggi. Hubungi khidmat untuk tambah nilai.",km:"💎 ដាក់ប្រាក់កាន់តែច្រើន VIP កាន់តែខ្ពស់។ ទាក់ទងជំនួយ។"}
+    "💎 累计存款越多，VIP 等级越高。存款请联系客服充值。":{en:"💎 The more you deposit, the higher your VIP. Contact support to top up.",ms:"💎 Lebih banyak deposit, VIP lebih tinggi. Hubungi khidmat untuk tambah nilai.",km:"💎 ដាក់ប្រាក់កាន់តែច្រើន VIP កាន់តែខ្ពស់។ ទាក់ទងជំនួយ។"},
+    "点球射门":{en:"Penalty Kick",ms:"Sepakan Penalti",km:"ការទាត់ពិន័យ"},"滑动射门 · 破门得分":{en:"Kick · score to win",ms:"Tendang · jaring menang",km:"ទាត់ · ស៊ុតបញ្ចូល"},
+    "剪刀石头布":{en:"Rock Paper Scissors",ms:"Batu Kertas Gunting",km:"ដុំថ្ម ក្រដាស កន្ត្រៃ"},"出拳对决 · 赢家通吃":{en:"Throw hands · winner takes all",ms:"Lawan · menang ambil semua",km:"ប្រកួត · អ្នកឈ្នះយកអស់"},
+    "⚽ 射门":{en:"⚽ Shoot",ms:"⚽ Tendang",km:"⚽ ទាត់"},"选方向射门，破门即中奖 ⚽":{en:"Pick a direction — score to win ⚽",ms:"Pilih arah — jaring untuk menang ⚽",km:"ជ្រើសទិស — ស៊ុតបញ្ចូលដើម្បីឈ្នះ ⚽"},
+    "出拳对决，赢了中奖 ✊✋✌️":{en:"Throw hands — win to score ✊✋✌️",ms:"Lawan — menang untuk menang ✊✋✌️",km:"ប្រកួត — ឈ្នះដើម្បីទទួល ✊✋✌️"}
   };
   function translateDoc(){
     if(LANG==="zh") return;
@@ -705,12 +805,19 @@
     }catch(e){}
   }
   function pickLang(){
-    var opts=[["zh","🇨🇳 中文"],["en","🇬🇧 English"],["ms","🇲🇾 Bahasa Melayu"],["km","🇰🇭 ខ្មែរ"]];
+    var fs='width="26" height="18" style="border-radius:3px;vertical-align:middle;margin-right:10px;box-shadow:0 0 0 1px rgba(255,255,255,.15)"';
+    var FLAGS={
+      zh:'<svg viewBox="0 0 30 20" '+fs+'><rect width="30" height="20" fill="#de2910"/><text x="4" y="13" font-size="10" fill="#ffde00">★</text><text x="11" y="6" font-size="4" fill="#ffde00">★</text><text x="13" y="9" font-size="4" fill="#ffde00">★</text><text x="12.5" y="12.5" font-size="4" fill="#ffde00">★</text><text x="10.5" y="14.5" font-size="4" fill="#ffde00">★</text></svg>',
+      en:'<svg viewBox="0 0 30 20" '+fs+'><rect width="30" height="20" fill="#012169"/><path d="M0 0 L30 20 M30 0 L0 20" stroke="#fff" stroke-width="3.5"/><path d="M0 0 L30 20 M30 0 L0 20" stroke="#C8102E" stroke-width="1.5"/><path d="M15 0 V20 M0 10 H30" stroke="#fff" stroke-width="5"/><path d="M15 0 V20 M0 10 H30" stroke="#C8102E" stroke-width="3"/></svg>',
+      ms:'<svg viewBox="0 0 30 20" '+fs+'><rect width="30" height="20" fill="#fff"/><rect y="2.85" width="30" height="2.85" fill="#cc0001"/><rect y="8.57" width="30" height="2.85" fill="#cc0001"/><rect y="14.28" width="30" height="2.85" fill="#cc0001"/><rect width="15" height="11.42" fill="#010066"/><text x="4" y="9" font-size="7" fill="#fc0">☾</text><text x="8.6" y="8.6" font-size="5" fill="#fc0">★</text></svg>',
+      km:'<svg viewBox="0 0 30 20" '+fs+'><rect width="30" height="20" fill="#032ea1"/><rect y="5" width="30" height="10" fill="#e00025"/><g fill="#fff"><rect x="14.2" y="7.5" width="1.6" height="4.5"/><rect x="11.5" y="9" width="1.4" height="3"/><rect x="17.1" y="9" width="1.4" height="3"/><rect x="10" y="12" width="10" height="1.2"/></g></svg>'
+    };
+    var opts=[["zh","中文"],["en","English"],["ms","Bahasa Melayu"],["km","ខ្មែរ"]];
     var ov=document.createElement("div");
     ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
     ov.innerHTML='<div style="background:#16121f;border:1px solid #3a2f5a;border-radius:16px;padding:18px;width:280px;max-width:88vw;box-shadow:0 10px 40px rgba(0,0,0,.5)">'+
       '<div style="color:#c9a3ff;font-size:13px;margin-bottom:12px;text-align:center">选择语言 · Language</div>'+
-      opts.map(function(o){return '<button data-l="'+o[0]+'" style="display:block;width:100%;margin:6px 0;padding:12px;border-radius:10px;border:1px solid #3a2f5a;background:'+(o[0]===LANG?"rgba(177,74,255,.22)":"#221a3a")+';color:#fff;font-size:15px;cursor:pointer">'+o[1]+'</button>';}).join("")+
+      opts.map(function(o){return '<button data-l="'+o[0]+'" style="display:flex;align-items:center;width:100%;margin:6px 0;padding:12px;border-radius:10px;border:1px solid #3a2f5a;background:'+(o[0]===LANG?"rgba(177,74,255,.22)":"#221a3a")+';color:#fff;font-size:15px;cursor:pointer">'+FLAGS[o[0]]+o[1]+'</button>';}).join("")+
       '</div>';
     ov.onclick=function(e){ if(e.target===ov) document.body.removeChild(ov); };
     ov.querySelectorAll("button[data-l]").forEach(function(btn){ btn.onclick=function(){ try{ localStorage.setItem("mg_game_lang", btn.getAttribute("data-l")); }catch(e){} location.reload(); }; });
