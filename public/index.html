@@ -74,6 +74,20 @@
   .card .play{position:absolute;right:12px;bottom:12px;font-size:11px;font-weight:800;color:var(--gold);
     border:1px solid var(--gold);border-radius:999px;padding:3px 10px;white-space:nowrap}
 
+  /* ============== 老虎机卡片 ============== */
+  .slot-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .slot-card{position:relative;border-radius:18px;padding:20px 16px;min-height:150px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+    background:linear-gradient(160deg,#2a2318,#161512);border:1px solid rgba(201,168,106,.3);
+    box-shadow:0 8px 22px rgba(0,0,0,.4);transition:transform .12s}
+  .slot-card:active{transform:scale(.97)}
+  .slot-logo{font-size:28px;font-weight:900;letter-spacing:1px;color:var(--gold);
+    text-shadow:0 2px 6px rgba(0,0,0,.5)}
+  .slot-name{font-weight:800;font-size:15px;color:var(--text)}
+  .slot-desc{font-size:11px;color:var(--muted)}
+  .slot-go{margin-top:6px;font-size:11px;font-weight:800;color:#1a1712;background:linear-gradient(180deg,var(--gold2),var(--gold));
+    border-radius:999px;padding:4px 14px}
+
   /* ============== 游戏房间通用 ============== */
   /* 游戏房间：一屏放下，不滚动 */
   .scene:has(.room){overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 96px}
@@ -161,6 +175,11 @@
   .profile-top .avatar{width:88px;height:88px}
   .profile-top .pname{font-size:20px;font-weight:900}
   .profile-top .pid{font-size:12px;color:var(--muted)}
+  .wallets{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .wallet{background:linear-gradient(135deg,#221f19,#161512);border:1px solid var(--line);border-radius:16px;padding:16px 14px}
+  .wallet.dep{border-color:rgba(201,168,106,.45);background:linear-gradient(135deg,#2a2318,#161512)}
+  .wallet .wk{font-size:12px;color:var(--muted)}
+  .wallet .wv{font-size:24px;font-weight:900;color:var(--gold);margin-top:6px;font-variant-numeric:tabular-nums}
   .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
   .stat{background:var(--panel);border:1px solid rgba(201,168,106,.2);border-radius:16px;padding:16px 10px;text-align:center}
   .stat .v{font-size:22px;font-weight:900;color:var(--gold)}
@@ -210,10 +229,14 @@
         <div class="pid" id="joined">注册时间：--</div>
         <div id="pvipBadge" style="margin-top:8px"></div>
       </div>
+      <div class="wallets">
+        <div class="wallet"><div class="wk">游戏积分</div><div class="wv" id="wPoints">0</div></div>
+        <div class="wallet dep"><div class="wk">存款余额</div><div class="wv" id="wDeposit">0</div></div>
+      </div>
       <div class="stats">
-        <div class="stat"><div class="v" id="stGames">0</div><div class="k">总游戏次数</div></div>
-        <div class="stat"><div class="v" id="stWin">0</div><div class="k">累计赢取金币</div></div>
-        <div class="stat"><div class="v" id="stBal">0</div><div class="k">当前余额</div></div>
+        <div class="stat"><div class="v" id="stBet">0</div><div class="k">总下注</div></div>
+        <div class="stat"><div class="v" id="stWin">0</div><div class="k">累计赢取</div></div>
+        <div class="stat"><div class="v" id="stGames">0</div><div class="k">总局数</div></div>
       </div>
       <div class="fav"><div class="k">最喜欢的游戏</div><div class="v" id="stFav">暂无</div></div>
     </section>
@@ -229,6 +252,20 @@
     <section class="scene" id="scene-history">
       <div class="h-title">🧾 历史记录</div>
       <div id="historyBox"></div>
+    </section>
+
+    <!-- ===== 老虎机（第三方，如 JILI） ===== -->
+    <section class="scene" id="scene-slot">
+      <div class="h-title">🎰 老虎机</div>
+      <div class="slot-grid">
+        <div class="slot-card" data-slot="jili">
+          <div class="slot-logo">JILI</div>
+          <div class="slot-name">JILI 电子</div>
+          <div class="slot-desc">经典老虎机 · 真钱游戏</div>
+          <div class="slot-go">进入 ▶</div>
+        </div>
+      </div>
+      <p class="tip" style="margin-top:14px">🎰 用「存款余额」进入第三方老虎机游玩。</p>
     </section>
 
     <!-- ===== 转盘房间 ===== -->
@@ -329,10 +366,11 @@
 
   <!-- 底部导航 -->
   <div class="nav">
-    <button class="active" data-nav="lobby"><span class="ic">🎮</span>游戏大厅</button>
+    <button data-nav="slot"><span class="ic">🎰</span>老虎机</button>
+    <button class="active" data-nav="lobby"><span class="ic">🎮</span>大厅</button>
     <button data-nav="vip"><span class="ic">👑</span>VIP</button>
-    <button data-nav="history"><span class="ic">🧾</span>历史记录</button>
-    <button data-nav="profile"><span class="ic">👤</span>个人中心</button>
+    <button data-nav="history"><span class="ic">🧾</span>历史</button>
+    <button data-nav="profile"><span class="ic">👤</span>我的</button>
   </div>
 </div>
 
@@ -394,7 +432,7 @@
     }
     requestAnimationFrame(step);
   }
-  function setBalance(v) { state.balance = v; rollNumber($("coinVal"), v); $("stBal").textContent = Number(v).toLocaleString(); var lb = $("lobbyBal"); if (lb) lb.textContent = Number(v).toLocaleString(); }
+  function setBalance(v) { state.balance = v; rollNumber($("coinVal"), v); var wp = $("wPoints"); if (wp) wp.textContent = Number(v).toLocaleString(); var lb = $("lobbyBal"); if (lb) lb.textContent = Number(v).toLocaleString(); }
   function setSpins(v) { /* 下注消耗模式：无免费次数，保留空函数避免改动各游戏调用 */ }
 
   function renderUser() {
@@ -413,11 +451,10 @@
     $("joined").textContent = "注册时间：" + new Date().toLocaleDateString(); // 模拟（后端可返回真实值）
   }
   function renderStats() {
-    $("stGames").textContent = state.games;
-    $("stWin").textContent = state.won.toLocaleString();
+    // 最爱游戏（本次会话统计）；下注/赢取/局数为终身数据，由 loadProfile 从后端填充
     let fav = "暂无", max = 0;
     for (const k in state.favCount) { if (state.favCount[k] > max) { max = state.favCount[k]; fav = k; } }
-    $("stFav").textContent = fav;
+    var f = $("stFav"); if (f) f.textContent = fav;
   }
 
   // ---------- 后端 API（服务端权威 + HMAC 验签） ----------
@@ -431,9 +468,14 @@
     try {
       const res = await api("/api/profile");
       if (res.data && res.data.ok) {
-        setBalance(res.data.balance || 0); setSpins(res.data.spins || 0);
-        if (res.data.player_id) { var j = $("joined"); if (j) j.textContent = GT("会员ID：", "Member ID: ", "ID Ahli: ", "លេខសមាជិក៖ ") + res.data.player_id; }
-        renderVip(res.data);
+        var d = res.data;
+        setBalance(d.balance || 0); setSpins(d.spins || 0);
+        var wd = $("wDeposit"); if (wd) wd.textContent = Number(d.total_deposit || 0).toLocaleString();
+        var sb = $("stBet"); if (sb) sb.textContent = Number(d.total_bet || 0).toLocaleString();
+        var sw = $("stWin"); if (sw) sw.textContent = Number(d.total_won || 0).toLocaleString();
+        var sg = $("stGames"); if (sg) sg.textContent = Number(d.total_plays || 0).toLocaleString();
+        if (d.player_id) { var j = $("joined"); if (j) j.textContent = GT("会员ID：", "Member ID: ", "ID Ahli: ", "លេខសមាជិក៖ ") + d.player_id; }
+        renderVip(d);
       }
     } catch (e) {}
   }
@@ -459,6 +501,33 @@
       default:           return GT("记录", "Record", "Rekod", "កំណត់ត្រា");
     }
   }
+  // 从流水备注解析游戏名（含 emoji），翻译成当前语言
+  var HIST_GAME = {
+    "幸运大转盘": function () { return GT("幸运大转盘", "Lucky Wheel", "Roda Bertuah", "កង់សំណាង"); },
+    "普林科弹珠": function () { return GT("普林科弹珠", "Plinko", "Plinko", "Plinko"); },
+    "砸金蛋":     function () { return GT("砸金蛋", "Golden Egg", "Telur Emas", "ស៊ុតមាស"); },
+    "刮刮乐":     function () { return GT("刮刮乐", "Scratch", "Calar", "កោស"); },
+    "点球射门":   function () { return GT("点球射门", "Penalty Kick", "Sepakan Penalti", "ការទាត់ពិន័យ"); },
+    "剪刀石头布": function () { return GT("剪刀石头布", "Rock Paper Scissors", "Batu Kertas Gunting", "ដុំថ្ម ក្រដាស កន្ត្រៃ"); }
+  };
+  function historyTitle(r) {
+    if (r.type === "spin") {
+      var first = ((r.note || "").split("·")[0] || "");
+      var zh = first.replace(/[^一-龥]/g, "");
+      var emoji = first.replace(/[一-龥\s]/g, "");
+      var name = HIST_GAME[zh] ? HIST_GAME[zh]() : (zh || historyTypeLabel("spin"));
+      return (emoji ? emoji + " " : "") + name;
+    }
+    return historyTypeLabel(r.type);
+  }
+  function historySub(r) {
+    if (r.type === "spin") {
+      var b = /下注(\d+)/.exec(r.note || ""), w = /中(\d+)/.exec(r.note || "");
+      var bet = b ? b[1] : "0", won = w ? w[1] : "0";
+      return GT("下注 " + bet + " · 中 " + won, "Bet " + bet + " · Won " + won, "Taruh " + bet + " · Menang " + won, "ភ្នាល់ " + bet + " · ឈ្នះ " + won);
+    }
+    return "";
+  }
   function fmtTime(s) {
     if (!s) return "";
     var d = new Date((s + "").replace(" ", "T") + "Z");
@@ -473,13 +542,31 @@
       var amt = Number(r.amount) || 0, pos = amt >= 0;
       var col = pos ? "#34d399" : "#f87171";
       var sign = pos ? "+" : "";
+      var sub = historySub(r);
       return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px">' +
-          '<div style="min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">' + historyTypeLabel(r.type) + '</div>' +
+          '<div style="min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">' + historyTitle(r) + '</div>' +
+            (sub ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + sub + '</div>' : '') +
             '<div style="font-size:11px;color:var(--muted);margin-top:3px">' + fmtTime(r.created_at) + '</div></div>' +
           '<div style="text-align:right;white-space:nowrap"><div style="font-size:16px;font-weight:900;color:' + col + '">' + sign + amt.toLocaleString() + '</div>' +
             '<div style="font-size:11px;color:var(--muted);margin-top:3px">' + GT("余额", "Bal", "Baki", "សមតុល្យ") + ' ' + Number(r.balance_after).toLocaleString() + '</div></div>' +
         '</div>';
     }).join('');
+  }
+  // ---------- 老虎机启动（JILI 等第三方） ----------
+  async function launchSlot(provider) {
+    toast(GT("正在进入…", "Launching…", "Memuatkan…", "កំពុងចូល…"));
+    try {
+      const res = await api("/api/slot/launch", { provider: provider });
+      const d = res.data || {};
+      if (d.ok && d.launch_url) {
+        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink) Telegram.WebApp.openLink(d.launch_url);
+        else window.open(d.launch_url, "_blank");
+        return;
+      }
+      toast(GT("JILI 尚未开放，敬请期待 🚧", "JILI isn't available yet 🚧", "JILI belum tersedia 🚧", "JILI មិនទាន់មាន 🚧"));
+    } catch (e) {
+      toast(GT("进入失败，请稍后再试", "Failed to launch, try again", "Gagal, cuba lagi", "បរាជ័យ សូមព្យាយាមម្ដងទៀត"));
+    }
   }
   // VIP 卡片（5 档，按累计存款）
   function renderVip(d) {
@@ -581,6 +668,7 @@
   function setNav(nav) { document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("active", b.dataset.nav === nav); }); }
   document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); if (b.dataset.nav === "history") loadHistory(); }); });
   document.querySelectorAll(".card").forEach(function (c) { c.addEventListener("click", function () { if (navLocked()) return; sfx("click"); openGame(c.dataset.game); }); });
+  document.querySelectorAll(".slot-card").forEach(function (c) { c.addEventListener("click", function () { if (navLocked()) return; sfx("click"); launchSlot(c.dataset.slot); }); });
   document.querySelectorAll("[data-back]").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav("lobby"); show("lobby"); }); });
   $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); unlockRound(); afterPop(); });
 
@@ -923,6 +1011,11 @@
     "刮刮乐":{en:"Scratch",ms:"Calar",km:"កោស"},"手指涂抹 · 自动揭晓":{en:"Scratch to reveal",ms:"Calar untuk dedah",km:"កោសដើម្បីបង្ហាញ"},
     "👤 个人中心":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
     "🧾 历史记录":{en:"🧾 HISTORY",ms:"🧾 SEJARAH",km:"🧾 ប្រវត្តិ"},"历史记录":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},
+    "老虎机":{en:"Slots",ms:"Slot",km:"ស្លត"},"大厅":{en:"Lobby",ms:"Lobi",km:"សាល"},"历史":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},"我的":{en:"Me",ms:"Saya",km:"ខ្ញុំ"},
+    "🎰 老虎机":{en:"🎰 SLOTS",ms:"🎰 SLOT",km:"🎰 ស្លត"},"JILI 电子":{en:"JILI Slots",ms:"JILI Slot",km:"JILI ស្លត"},"经典老虎机 · 真钱游戏":{en:"Classic slots · real-money",ms:"Slot klasik · wang sebenar",km:"ស្លតបុរាណ · លុយពិត"},"进入 ▶":{en:"Enter ▶",ms:"Masuk ▶",km:"ចូល ▶"},
+    "🎰 用「存款余额」进入第三方老虎机游玩。":{en:"🎰 Use your Deposit Balance to play third-party slots.",ms:"🎰 Guna Baki Deposit untuk main slot pihak ketiga.",km:"🎰 ប្រើសមតុល្យប្រាក់បញ្ញើដើម្បីលេងស្លត។"},
+    "游戏积分":{en:"Points (mini games)",ms:"Poin (mini)",km:"ពិន្ទុ (ល្បែង)"},"存款余额":{en:"Deposit Balance",ms:"Baki Deposit",km:"សមតុល្យប្រាក់បញ្ញើ"},
+    "总下注":{en:"Total Bet",ms:"Jumlah Taruh",km:"ភ្នាល់សរុប"},"累计赢取":{en:"Total Won",ms:"Jumlah Menang",km:"ឈ្នះសរុប"},"总局数":{en:"Total Plays",ms:"Jumlah Main",km:"លេងសរុប"},
     "总游戏次数":{en:"Total plays",ms:"Jumlah main",km:"ចំនួនលេងសរុប"},"累计赢取金币":{en:"Total won",ms:"Jumlah menang",km:"ឈ្នះសរុប"},"当前余额":{en:"Balance",ms:"Baki",km:"សមតុល្យ"},"最喜欢的游戏":{en:"Favorite",ms:"Kegemaran",km:"ចូលចិត្ត"},"暂无":{en:"None",ms:"Tiada",km:"គ្មាន"},
     "← 返回大厅":{en:"← Back",ms:"← Kembali",km:"← ត្រឡប់"},"🎰 SPIN":{en:"🎰 SPIN",ms:"🎰 PUTAR",km:"🎰 បង្វិល"},"游戏大厅":{en:"Lobby",ms:"Lobi",km:"សាល"},"个人中心":{en:"Profile",ms:"Profil",km:"ប្រវត្តិរូប"},
     "💰 当前积分":{en:"💰 Balance",ms:"💰 Baki",km:"💰 សមតុល្យ"},

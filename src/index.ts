@@ -22,6 +22,7 @@ export default {
       if (path === "/api/profile") return handleProfile(request, env, db);
       if (path === "/api/spin") return handleSpin(request, env, db);
       if (path === "/api/history") return handleHistory(request, env, db);
+      if (path === "/api/slot/launch") return handleSlotLaunch(request, env, db);
       return handleWebhook(request, env, db, url);   // Telegram webhook
     }
 
@@ -391,14 +392,27 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
   const vipCfg = await getVipConfig(db);
   const vip = computeVip(p ? (p.total_deposit || 0) : 0, vipCfg);
   const vipTiers = vipCfg.names.map((nm: string, i: number) => ({ level: i + 1, name: nm, min: i === 0 ? 0 : vipCfg.thresholds[i - 1], benefits: (vipCfg.benefits && vipCfg.benefits[i]) || [] }));
+  // 统计本人历史：总下注 / 总赢取 / 总局数（从流水的备注解析，无需加列）
+  let totalBet = 0, totalWon = 0, plays = 0;
+  try {
+    const txs: any = await db.prepare(`SELECT note FROM transactions WHERE tg_id = ? AND type = 'spin'`).bind(user.id).all();
+    for (const t of txs.results || []) {
+      plays++;
+      const b = /下注(\d+)/.exec(t.note || ""); if (b) totalBet += parseInt(b[1], 10) || 0;
+      const w = /中(\d+)/.exec(t.note || "");   if (w) totalWon += parseInt(w[1], 10) || 0;
+    }
+  } catch (e) {}
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),
     player_id: p ? (p.player_id || "") : "",
-    balance: p ? p.balance : 0,
+    balance: p ? p.balance : 0,          // 迷你游戏积分 Points
     spins: 0,
     banned: p ? (p.status === "banned") : false,
-    total_deposit: p ? (p.total_deposit || 0) : 0,
+    total_deposit: p ? (p.total_deposit || 0) : 0,   // 存款余额 Deposit Balance
+    total_bet: totalBet,
+    total_won: totalWon,
+    total_plays: plays,
     vip: vip.level,
     vip_name: vip.name,
     vip_tiers: vipTiers,
@@ -416,6 +430,21 @@ async function handleHistory(request: Request, env: any, db: any): Promise<Respo
     `SELECT type, amount, balance_after, note, created_at FROM transactions WHERE tg_id = ? ORDER BY id DESC LIMIT ?`
   ).bind(user.id, limit).all();
   return jsonResp({ ok: true, history: res.results || [] });
+}
+
+// 老虎机启动（JILI 等第三方）——目前是占位：等拿到 JILI 代理商 API 文档 + 设好密钥后接真实启动地址。
+// 真正接好后：用 JILI Agent API 换取该玩家的游戏启动 URL（seamless/transfer 钱包），返回给前端 iframe/跳转打开。
+async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Response> {
+  const body = await readJson(request);
+  const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
+  if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
+  const provider = String(body.provider || "").toLowerCase();
+  // 需要的密钥（只有你 Cloudflare 账号能设）：JILI_AGENT_ID / JILI_AGENT_KEY / JILI_API_BASE
+  if (!env.JILI_AGENT_KEY || !env.JILI_AGENT_ID || !env.JILI_API_BASE) {
+    return jsonResp({ ok: false, error: "not_configured", provider, message: "老虎机对接尚未配置（等 JILI API 文档 + 密钥）" });
+  }
+  // TODO：在此按 JILI 文档签名并调用「获取游戏URL」接口，拿到 launch_url 后返回。
+  return jsonResp({ ok: false, error: "not_implemented", provider, message: "JILI 连接器待实现（需 API 文档）" });
 }
 
 async function handleSpin(request: Request, env: any, db: any): Promise<Response> {
