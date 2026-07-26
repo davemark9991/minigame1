@@ -21,6 +21,7 @@ export default {
       if (path.startsWith("/api/ext/")) return handleExt(request, env, db, path);   // 公司对接 API
       if (path === "/api/profile") return handleProfile(request, env, db);
       if (path === "/api/spin") return handleSpin(request, env, db);
+      if (path === "/api/history") return handleHistory(request, env, db);
       return handleWebhook(request, env, db, url);   // Telegram webhook
     }
 
@@ -403,6 +404,18 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
     vip_tiers: vipTiers,
     company_name: p ? (p.company_name || "") : ""
   });
+}
+
+// 玩家自助历史记录：返回本人最近的流水（下注/派彩/充值/调整）
+async function handleHistory(request: Request, env: any, db: any): Promise<Response> {
+  const body = await readJson(request);
+  const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
+  if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
+  const limit = Math.min(Math.max(parseInt(body.limit, 10) || 30, 1), 100);
+  const res: any = await db.prepare(
+    `SELECT type, amount, balance_after, note, created_at FROM transactions WHERE tg_id = ? ORDER BY id DESC LIMIT ?`
+  ).bind(user.id, limit).all();
+  return jsonResp({ ok: true, history: res.results || [] });
 }
 
 async function handleSpin(request: Request, env: any, db: any): Promise<Response> {

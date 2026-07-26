@@ -225,6 +225,12 @@
       <p class="tip" style="margin-top:12px">💎 累计存款越多，VIP 等级越高。存款请联系客服充值。</p>
     </section>
 
+    <!-- ===== 历史记录 ===== -->
+    <section class="scene" id="scene-history">
+      <div class="h-title">🧾 历史记录</div>
+      <div id="historyBox"></div>
+    </section>
+
     <!-- ===== 转盘房间 ===== -->
     <section class="scene" id="scene-wheel">
       <div class="room">
@@ -325,6 +331,7 @@
   <div class="nav">
     <button class="active" data-nav="lobby"><span class="ic">🎮</span>游戏大厅</button>
     <button data-nav="vip"><span class="ic">👑</span>VIP</button>
+    <button data-nav="history"><span class="ic">🧾</span>历史记录</button>
     <button data-nav="profile"><span class="ic">👤</span>个人中心</button>
   </div>
 </div>
@@ -430,6 +437,50 @@
       }
     } catch (e) {}
   }
+  // ---------- 历史记录（玩家自助查看本人流水） ----------
+  async function loadHistory() {
+    var box = $("historyBox"); if (!box) return;
+    box.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px;font-size:13px">' + GT("加载中…", "Loading…", "Memuatkan…", "កំពុងផ្ទុក…") + '</div>';
+    try {
+      const res = await api("/api/history", { limit: 50 });
+      if (res.data && res.data.ok) renderHistory(res.data.history || []);
+      else box.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px;font-size:13px">' + GT("暂无记录", "No records yet", "Tiada rekod", "គ្មានកំណត់ត្រា") + '</div>';
+    } catch (e) {
+      box.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px;font-size:13px">' + GT("加载失败", "Failed to load", "Gagal memuat", "ផ្ទុកបរាជ័យ") + '</div>';
+    }
+  }
+  function historyTypeLabel(type) {
+    switch (type) {
+      case "spin":       return GT("游戏", "Game", "Permainan", "ហ្គេម");
+      case "deposit":    return GT("充值", "Deposit", "Deposit", "ដាក់ប្រាក់");
+      case "ext_credit": return GT("转分入账", "Credit in", "Kredit masuk", "បញ្ចូលពិន្ទុ");
+      case "admin_grant":return GT("系统加分", "Bonus", "Bonus", "ប្រាក់រង្វាន់");
+      case "admin_deduct":return GT("系统扣分", "Deduction", "Potongan", "កាត់ពិន្ទុ");
+      default:           return GT("记录", "Record", "Rekod", "កំណត់ត្រា");
+    }
+  }
+  function fmtTime(s) {
+    if (!s) return "";
+    var d = new Date((s + "").replace(" ", "T") + "Z");
+    if (isNaN(d.getTime())) return s;
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function renderHistory(list) {
+    var box = $("historyBox"); if (!box) return;
+    if (!list.length) { box.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px;font-size:13px">' + GT("暂无记录", "No records yet", "Tiada rekod", "គ្មានកំណត់ត្រា") + '</div>'; return; }
+    box.innerHTML = list.map(function (r) {
+      var amt = Number(r.amount) || 0, pos = amt >= 0;
+      var col = pos ? "#34d399" : "#f87171";
+      var sign = pos ? "+" : "";
+      return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px">' +
+          '<div style="min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">' + historyTypeLabel(r.type) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:3px">' + fmtTime(r.created_at) + '</div></div>' +
+          '<div style="text-align:right;white-space:nowrap"><div style="font-size:16px;font-weight:900;color:' + col + '">' + sign + amt.toLocaleString() + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:3px">' + GT("余额", "Bal", "Baki", "សមតុល្យ") + ' ' + Number(r.balance_after).toLocaleString() + '</div></div>' +
+        '</div>';
+    }).join('');
+  }
   // VIP 卡片（5 档，按累计存款）
   function renderVip(d) {
     var tiers = d.vip_tiers || [], cur = d.vip || 1, dep = d.total_deposit || 0;
@@ -528,7 +579,7 @@
     document.querySelectorAll(".scene").forEach(function (s) { s.classList.toggle("active", s.id === "scene-" + scene); });
   }
   function setNav(nav) { document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("active", b.dataset.nav === nav); }); }
-  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); }); });
+  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); if (b.dataset.nav === "history") loadHistory(); }); });
   document.querySelectorAll(".card").forEach(function (c) { c.addEventListener("click", function () { if (navLocked()) return; sfx("click"); openGame(c.dataset.game); }); });
   document.querySelectorAll("[data-back]").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav("lobby"); show("lobby"); }); });
   $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); unlockRound(); afterPop(); });
@@ -871,6 +922,7 @@
     "砸金蛋":{en:"Golden Egg",ms:"Telur Emas",km:"ស៊ុតមាស"},"大锤砸下 · 碎屑粒子":{en:"Hammer smash · particles",ms:"Tukul · serpihan",km:"ញញួរ · ភាគល្អិត"},
     "刮刮乐":{en:"Scratch",ms:"Calar",km:"កោស"},"手指涂抹 · 自动揭晓":{en:"Scratch to reveal",ms:"Calar untuk dedah",km:"កោសដើម្បីបង្ហាញ"},
     "👤 个人中心":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
+    "🧾 历史记录":{en:"🧾 HISTORY",ms:"🧾 SEJARAH",km:"🧾 ប្រវត្តិ"},"历史记录":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},
     "总游戏次数":{en:"Total plays",ms:"Jumlah main",km:"ចំនួនលេងសរុប"},"累计赢取金币":{en:"Total won",ms:"Jumlah menang",km:"ឈ្នះសរុប"},"当前余额":{en:"Balance",ms:"Baki",km:"សមតុល្យ"},"最喜欢的游戏":{en:"Favorite",ms:"Kegemaran",km:"ចូលចិត្ត"},"暂无":{en:"None",ms:"Tiada",km:"គ្មាន"},
     "← 返回大厅":{en:"← Back",ms:"← Kembali",km:"← ត្រឡប់"},"🎰 SPIN":{en:"🎰 SPIN",ms:"🎰 PUTAR",km:"🎰 បង្វិល"},"游戏大厅":{en:"Lobby",ms:"Lobi",km:"សាល"},"个人中心":{en:"Profile",ms:"Profil",km:"ប្រវត្តិរូប"},
     "💰 当前积分":{en:"💰 Balance",ms:"💰 Baki",km:"💰 សមតុល្យ"},
