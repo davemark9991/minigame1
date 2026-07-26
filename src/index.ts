@@ -224,14 +224,23 @@ async function getSettings(db: any): Promise<any> {
 async function getVipConfig(db: any): Promise<any> {
   let thresholds = [100, 500, 2000, 10000];               // 4 个阈值把玩家分成 5 档
   let names = ["Bronze", "Silver", "Gold", "Platinum", "Diamond"];
+  // 每档 3 条权益（后端可在 settings 表 key='vip_benefits' 存 5×3 的 JSON 修改）
+  let benefits = [
+    ["🎁 Welcome bonus", "💬 Live support", "🔄 0.5% daily rebate"],
+    ["🎁 Upgrade bonus", "💬 Priority support", "🔄 1% daily rebate"],
+    ["🎁 Exclusive bonus", "💬 Dedicated support", "🔄 1.5% daily rebate"],
+    ["🎁 High-roller bonus", "💬 VIP support", "🔄 2% daily rebate"],
+    ["🎁 Supreme bonus", "💬 Personal manager", "🔄 3% daily rebate"],
+  ];
   try {
-    const res: any = await db.prepare(`SELECT key, value FROM settings WHERE key IN ('vip_thresholds','vip_names')`).all();
+    const res: any = await db.prepare(`SELECT key, value FROM settings WHERE key IN ('vip_thresholds','vip_names','vip_benefits')`).all();
     for (const r of res.results || []) {
       if (r.key === "vip_thresholds") { const a = JSON.parse(r.value); if (Array.isArray(a) && a.length === 4) thresholds = a.map((x: any) => parseInt(x, 10) || 0); }
       if (r.key === "vip_names") { const a = JSON.parse(r.value); if (Array.isArray(a) && a.length === 5) names = a.map((x: any) => String(x)); }
+      if (r.key === "vip_benefits") { const a = JSON.parse(r.value); if (Array.isArray(a) && a.length === 5) benefits = a.map((row: any) => (Array.isArray(row) ? row.slice(0, 3).map((x: any) => String(x)) : [])); }
     }
   } catch (e) {}
-  return { thresholds, names };
+  return { thresholds, names, benefits };
 }
 function computeVip(totalDeposit: number, cfg: any): any {
   const t = cfg.thresholds; let level = 1;
@@ -380,7 +389,7 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
   const p: any = await ensurePlayer(db, user, settings);
   const vipCfg = await getVipConfig(db);
   const vip = computeVip(p ? (p.total_deposit || 0) : 0, vipCfg);
-  const vipTiers = vipCfg.names.map((nm: string, i: number) => ({ level: i + 1, name: nm, min: i === 0 ? 0 : vipCfg.thresholds[i - 1] }));
+  const vipTiers = vipCfg.names.map((nm: string, i: number) => ({ level: i + 1, name: nm, min: i === 0 ? 0 : vipCfg.thresholds[i - 1], benefits: (vipCfg.benefits && vipCfg.benefits[i]) || [] }));
   return jsonResp({
     ok: true,
     username: p ? p.username : (user.username || user.first_name || "玩家"),

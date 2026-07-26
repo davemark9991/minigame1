@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>🎰 NEON CASINO · 游戏大厅</title>
+<title>🎮 游戏中心</title>
 <link rel="manifest" href="/manifest-game.webmanifest" />
 <meta name="theme-color" content="#1a1a2e" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -60,12 +60,12 @@
   /* ============== 大厅卡片 ============== */
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .card{position:relative;border-radius:18px;padding:18px 16px;min-height:140px;cursor:pointer;
-    background:linear-gradient(160deg,var(--panel),#171730);
-    border:1px solid rgba(201,168,106,.25);overflow:hidden;
+    background:linear-gradient(160deg,#22211d,#161512);
+    border:1px solid rgba(201,168,106,.22);overflow:hidden;
     box-shadow:0 8px 22px rgba(0,0,0,.4);transition:transform .12s,box-shadow .2s}
   .card:active{transform:scale(.97)}
-  .card::after{content:"";position:absolute;inset:-40% -40% auto auto;width:120px;height:120px;
-    background:radial-gradient(circle,rgba(201,168,106,.35),transparent 70%);filter:blur(6px)}
+  .card::after{content:"";position:absolute;inset:0;border-radius:18px;pointer-events:none;
+    background:linear-gradient(160deg,rgba(201,168,106,.06),transparent 45%)}
   .card .emoji{font-size:46px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
   .card .name{margin-top:10px;font-weight:800;font-size:17px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px}
@@ -115,6 +115,13 @@
   .egg.shake{animation:eggshake .12s linear 6}
   @keyframes eggshake{25%{transform:translateX(-5px) rotate(-4deg)}75%{transform:translateX(5px) rotate(4deg)}}
   .egg.broken .body{opacity:0;transform:scale(.4);transition:.25s}
+  /* 剪刀石头布摇拳 */
+  .rps-shake{animation:rpsShake .18s ease-in-out infinite}
+  @keyframes rpsShake{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-16px) rotate(-8deg)}}
+  #rpsOpp.rps-shake{animation-name:rpsShakeR}
+  @keyframes rpsShakeR{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-16px) rotate(8deg)}}
+  .rps-reveal{animation:rpsReveal .3s cubic-bezier(.3,1.5,.5,1)}
+  @keyframes rpsReveal{0%{transform:scale(.5)}100%{transform:scale(1)}}
   .hammer{position:absolute;font-size:54px;left:50%;top:-90px;transform:translateX(-20%) rotate(-60deg);
     opacity:0;pointer-events:none;transform-origin:80% 80%}
   .hammer.swing{animation:swing .5s cubic-bezier(.3,1.4,.5,1) forwards}
@@ -126,7 +133,7 @@
     box-shadow:0 0 22px rgba(0,0,0,.5)}
   .scratch-prize{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
     background:linear-gradient(135deg,#241a40,#131210);color:var(--gold)}
-  .scratch-prize .big{font-size:44px;font-weight:900;text-shadow:0 0 18px var(--gold)}
+  .scratch-prize .big{font-size:44px;font-weight:900;color:var(--gold)}
   #scratchCanvas{position:absolute;inset:0}
 
   /* ============== 中奖弹窗 ============== */
@@ -136,18 +143,18 @@
   .pop .card2{background:linear-gradient(160deg,#26241f,#131210);border:1px solid var(--gold);
     border-radius:22px;padding:30px 40px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.6);animation:pumpin .35s}
   @keyframes pumpin{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
-  .pop .big{font-size:46px;font-weight:900;color:var(--gold);text-shadow:0 0 20px var(--gold)}
-  .pop .lbl{color:#cdd2ff;margin-top:6px}
+  .pop .big{font-size:46px;font-weight:900;color:var(--gold)}
+  .pop .lbl{color:var(--muted);margin-top:6px}
   .pop button{margin-top:18px;border:none;border-radius:12px;padding:10px 26px;font-weight:800;
-    background:var(--neon2);color:#06121a;cursor:pointer}
+    background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1712;cursor:pointer}
 
   /* ============== 底部导航 ============== */
-  .nav{position:absolute;left:0;right:0;bottom:0;display:flex;background:rgba(16,16,32,.92);
-    border-top:1px solid rgba(201,168,106,.3);backdrop-filter:blur(8px)}
+  .nav{position:absolute;left:0;right:0;bottom:0;display:flex;background:rgba(18,18,20,.94);
+    border-top:1px solid var(--line);backdrop-filter:blur(8px)}
   .nav button{flex:1;background:none;border:none;color:var(--muted);padding:11px 0 14px;
     font-size:12px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
   .nav button .ic{font-size:22px}
-  .nav button.active{color:var(--neon2);text-shadow:0 0 10px var(--neon2)}
+  .nav button.active{color:var(--gold)}
 
   /* ============== 个人中心 ============== */
   .profile-top{display:flex;flex-direction:column;align-items:center;gap:8px;margin:10px 0 20px}
@@ -173,7 +180,7 @@
       <div><div class="nick" id="nick">玩家</div><div class="uid" id="uid">ID: --</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
-      <button id="gLang" style="background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer">EN</button>
+      <button id="gLang" style="background:rgba(201,168,106,.1);color:var(--gold);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">EN</button>
       <div class="coins"><div class="coin-ico">¥</div><span id="coinVal">0</span></div>
     </div>
   </div>
@@ -201,6 +208,7 @@
         <div class="pname" id="nick2">玩家</div>
         <div class="pid" id="uid2">ID: --</div>
         <div class="pid" id="joined">注册时间：--</div>
+        <div id="pvipBadge" style="margin-top:8px"></div>
       </div>
       <div class="stats">
         <div class="stat"><div class="v" id="stGames">0</div><div class="k">总游戏次数</div></div>
@@ -233,7 +241,7 @@
       <div class="room">
         <button class="back" data-back>← 返回大厅</button>
         <h2>普林科弹珠</h2>
-        <canvas id="plinkoCanvas" width="360" height="440" style="width:min(90vw,360px)"></canvas>
+        <canvas id="plinkoCanvas" width="360" height="440" style="height:min(46vh,420px);width:auto;max-width:92vw;aspect-ratio:36/44"></canvas>
         <button class="play-btn" id="plinkoDrop">🔵 投放弹珠</button>
         <p class="tip">小球真实碰撞反弹，落入倍率槽 🎯</p>
       </div>
@@ -264,7 +272,7 @@
           <canvas id="scratchCanvas"></canvas>
         </div>
         <button class="play-btn" id="scratchNew">🎫 买一张新卡</button>
-        <p class="tip">用手指涂抹刮开，刮开 60% 自动揭晓 🪙</p>
+        <p class="tip">用手指涂抹刮开，露出数字即自动揭晓 🪙</p>
       </div>
     </section>
 
@@ -418,25 +426,43 @@
   }
   // VIP 卡片（5 档，按累计存款）
   function renderVip(d) {
-    var box = $("vipBox"); if (!box) return;
     var tiers = d.vip_tiers || [], cur = d.vip || 1, dep = d.total_deposit || 0;
+    // 个人中心的当前等级徽章
+    var badge = $("pvipBadge");
+    if (badge) badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(201,168,106,.14);border:1px solid var(--line);color:var(--gold);border-radius:999px;padding:5px 14px;font-size:13px;font-weight:800">👑 VIP ' + cur + ' · ' + (d.vip_name || '') + '</span>';
+    var box = $("vipBox"); if (!box) return;
     var curMin = (tiers[cur - 1] ? tiers[cur - 1].min : 0);
     var next = null; for (var i = 0; i < tiers.length; i++) { if (tiers[i].level === cur + 1) next = tiers[i]; }
     var bar = next ? Math.max(0, Math.min(100, Math.round((dep - curMin) / ((next.min - curMin) || 1) * 100))) : 100;
-    box.innerHTML =
-      '<div style="background:linear-gradient(135deg,#201f1c,#141311);border:1px solid #2b2925;border-radius:14px;padding:16px;margin:14px 0">' +
+    var head =
+      '<div style="background:linear-gradient(135deg,#211f1a,#141311);border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
-          '<div><div style="color:#c9a86a;font-size:12px">VIP</div><div style="font-size:22px;font-weight:900;color:#c9a86a">Lv.' + cur + ' · ' + (d.vip_name || '') + '</div></div>' +
-          '<div style="text-align:right;color:#8a8578;font-size:12px">' + GT("累计存款","Total deposit","Jumlah deposit","ប្រាក់បញ្ញើសរុប") + '<br><b style="color:#f2ead9;font-size:16px">' + Number(dep).toLocaleString() + '</b></div>' +
+          '<div><div style="color:var(--muted);font-size:11px;letter-spacing:2px">' + GT("当前等级","CURRENT TIER","TAHAP KINI","កម្រិតបច្ចុប្បន្ន") + '</div><div style="font-size:24px;font-weight:900;color:var(--gold)">👑 ' + (d.vip_name || '') + '</div></div>' +
+          '<div style="text-align:right;color:var(--muted);font-size:12px">' + GT("累计存款","Total deposit","Jumlah deposit","ប្រាក់បញ្ញើសរុប") + '<br><b style="color:#f2ead9;font-size:16px">' + Number(dep).toLocaleString() + '</b></div>' +
         '</div>' +
         (next
-          ? '<div style="margin-top:10px"><div style="height:8px;background:#26241f;border-radius:5px;overflow:hidden"><div style="height:100%;width:' + bar + '%;background:linear-gradient(90deg,#a98c56,#d8bd85)"></div></div>' +
-            '<div style="color:#8a8578;font-size:11px;margin-top:4px">' + GT("距 "+next.name+" 还差 "+Math.max(0,next.min-dep).toLocaleString(), next.name+": "+Math.max(0,next.min-dep).toLocaleString()+" to go", next.name+": lagi "+Math.max(0,next.min-dep).toLocaleString(), next.name+": នៅខ្វះ "+Math.max(0,next.min-dep).toLocaleString()) + '</div></div>'
-          : '<div style="margin-top:10px;color:#c9a86a;font-size:12px">' + GT("已达最高等级 🏆","Max level reached 🏆","Tahap tertinggi 🏆","កម្រិតខ្ពស់បំផុត 🏆") + '</div>') +
-        '<div style="display:flex;gap:6px;margin-top:12px">' +
-          tiers.map(function (t) { return '<div style="flex:1;text-align:center;padding:6px 2px;border-radius:8px;font-size:10px;' + (t.level === cur ? 'background:rgba(201,168,106,.15);color:#c9a86a;font-weight:700' : 'color:#8a8578') + '">' + t.name + '<br><span style="font-size:9px">' + Number(t.min).toLocaleString() + '</span></div>'; }).join('') +
-        '</div>' +
+          ? '<div style="margin-top:12px"><div style="height:8px;background:#26241f;border-radius:5px;overflow:hidden"><div style="height:100%;width:' + bar + '%;background:linear-gradient(90deg,var(--gold2),var(--gold))"></div></div>' +
+            '<div style="color:var(--muted);font-size:11px;margin-top:5px">' + GT("距 "+next.name+" 还差 "+Math.max(0,next.min-dep).toLocaleString(), next.name+": "+Math.max(0,next.min-dep).toLocaleString()+" to go", next.name+": lagi "+Math.max(0,next.min-dep).toLocaleString(), next.name+": នៅខ្វះ "+Math.max(0,next.min-dep).toLocaleString()) + '</div></div>'
+          : '<div style="margin-top:12px;color:var(--gold);font-size:12px">' + GT("已达最高等级 🏆","Max level reached 🏆","Tahap tertinggi 🏆","កម្រិតខ្ពស់បំផុត 🏆") + '</div>') +
       '</div>';
+    // 完整 VIP PROGRAM：所有等级卡片，当前等级亮起，各含权益
+    var progTitle = '<div style="color:var(--muted);font-size:12px;letter-spacing:3px;margin:6px 2px 8px">' + GT("VIP 权益一览","VIP PROGRAM","PROGRAM VIP","កម្មវិធី VIP") + '</div>';
+    var benefLbl = GT("专属权益","BENEFITS","MANFAAT","អត្ថប្រយោជន៍");
+    var list = tiers.map(function (t) {
+      var on = t.level === cur, reached = t.level <= cur;
+      var benefits = (t.benefits && t.benefits.length ? t.benefits : []);
+      return '<div style="border:1px solid ' + (on ? 'var(--gold)' : 'var(--line)') + ';border-radius:14px;padding:14px;margin-bottom:10px;' +
+          (on ? 'background:linear-gradient(135deg,rgba(201,168,106,.14),rgba(201,168,106,.04));box-shadow:0 6px 20px rgba(0,0,0,.35)' : 'background:#17161380') + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<div style="font-size:17px;font-weight:900;color:' + (reached ? 'var(--gold)' : 'var(--muted)') + '">' + (reached ? '👑 ' : '🔒 ') + t.name + '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">' + (on ? '<span style="color:var(--gold);font-weight:800">' + GT("当前","CURRENT","KINI","បច្ចុប្បន្ន") + '</span>' : (GT("存款","Deposit","Deposit","ប្រាក់បញ្ញើ") + ' ≥ ' + Number(t.min).toLocaleString())) + '</div>' +
+        '</div>' +
+        (benefits.length
+          ? '<div style="margin-top:10px">' + benefits.map(function (b) { return '<div style="font-size:12.5px;color:' + (reached ? '#e8e2d6' : 'var(--muted)') + ';padding:3px 0">' + b + '</div>'; }).join('') + '</div>'
+          : '') +
+      '</div>';
+    }).join('');
+    box.innerHTML = head + progTitle + list;
   }
 
   // 真正发奖：服务端决定 award；返回 {ok, award, balance, spins} 或 {ok:false, error}
@@ -694,7 +720,7 @@
       if (!pending || revealed) return;
       ctx.globalCompositeOperation = "destination-out";
       ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill();
-      if (cleared() > 0.6) reveal();
+      if (cleared() > 0.35) reveal();
     }
     function cleared() {
       const im = ctx.getImageData(0, 0, cv.width, cv.height).data; let clear = 0, total = 0;
@@ -724,6 +750,7 @@
     sbtns.forEach(function (b) {
       b.addEventListener("click", function () { sfx("click"); sbtns.forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); kick(b.dataset.d); });
     });
+    var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
     async function kick(dir) {
       if (busy) return; busy = true;
       var r = await requestAward("点球射门");
@@ -731,17 +758,24 @@
       var win = Number(r.award) > 0;
       var ball = $("ball"), keeper = $("keeper");
       var pos = dir === "left" ? "18%" : dir === "right" ? "82%" : "50%";
-      // 中奖：门将扑错方向；未中：门将扑对方向
-      keeper.style.left = win ? (dir === "center" ? "22%" : "50%") : pos;
-      ball.style.bottom = "58%"; ball.style.left = pos;
+      // ① 助跑蓄力
+      ball.style.transition = "transform .2s ease"; ball.style.transform = "translateX(-50%) scale(1.18)";
+      await wait(220);
+      // ② 起脚：球飞向目标，门将同步扑救（中奖扑错方向）
+      ball.style.transition = "bottom .5s cubic-bezier(.3,.9,.4,1),left .5s cubic-bezier(.3,.9,.4,1),transform .5s ease";
+      keeper.style.transition = "left .34s cubic-bezier(.4,1.3,.5,1)";
+      keeper.style.left = win ? (dir === "center" ? "20%" : "50%") : pos;
+      ball.style.bottom = "58%"; ball.style.left = pos; ball.style.transform = "translateX(-50%) scale(.78)";
       setBalance(r.balance);
+      await wait(520);
+      // ③ 结果
       $("soccerResult").textContent = win ? GT("球进啦！⚽","GOAL! ⚽","GOL! ⚽","បញ្ចូលទី! ⚽") : GT("被扑出 🧤","SAVED 🧤","DISELAMAT 🧤","ការពារបាន 🧤");
       $("soccerResult").style.color = win ? "#34d399" : "#f87171";
       if (win) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
       setTimeout(function () {
         popResult(r.award, true);
-        afterPopFn = function () { ball.style.bottom = "14px"; ball.style.left = "50%"; keeper.style.left = "50%"; $("soccerResult").textContent = ""; busy = false; };
-      }, 650);
+        afterPopFn = function () { ball.style.transition = "all .3s"; ball.style.bottom = "14px"; ball.style.left = "50%"; ball.style.transform = "translateX(-50%) scale(1)"; keeper.style.left = "50%"; $("soccerResult").textContent = ""; busy = false; };
+      }, 620);
     }
   })();
 
@@ -756,20 +790,31 @@
     rbtns.forEach(function (b) {
       b.addEventListener("click", function () { sfx("click"); rbtns.forEach(function(x){x.classList.remove("sel");}); b.classList.add("sel"); play(b.dataset.c); });
     });
+    var wait = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
     async function play(choice) {
       if (busy) return; busy = true;
-      $("rpsResult").textContent = "…"; $("rpsResult").style.color = "#8a8578";
+      var you = $("rpsYou"), opp = $("rpsOpp"), resEl = $("rpsResult");
       var r = await requestAward("剪刀石头布");
-      if (!r.ok) { popResult(r.error, false); $("rpsResult").textContent = ""; busy = false; return; }
+      if (!r.ok) { popResult(r.error, false); busy = false; return; }
       var win = Number(r.award) > 0;
-      var opp = win ? beats[choice] : loses[choice];
-      $("rpsYou").textContent = hands[choice];
-      $("rpsOpp").textContent = hands[opp];
-      $("rpsResult").textContent = win ? GT("你赢了","WIN","MENANG","ឈ្នះ") : GT("你输了","LOSE","KALAH","ចាញ់");
-      $("rpsResult").style.color = win ? "#34d399" : "#f87171";
+      var oppc = win ? beats[choice] : loses[choice];
+      // ① 双方摇拳（石头…剪刀…布…出！）
+      resEl.textContent = ""; resEl.style.color = "#8a8578";
+      you.textContent = "✊"; opp.textContent = "✊";
+      you.classList.add("rps-shake"); opp.classList.add("rps-shake");
+      await wait(950);
+      you.classList.remove("rps-shake"); opp.classList.remove("rps-shake");
+      // ② 亮出手势
+      you.textContent = hands[choice]; opp.textContent = hands[oppc];
+      you.classList.remove("rps-reveal"); opp.classList.remove("rps-reveal");
+      void you.offsetWidth; you.classList.add("rps-reveal"); opp.classList.add("rps-reveal");
+      await wait(340);
+      // ③ 胜负
+      resEl.textContent = win ? GT("你赢了","WIN","MENANG","ឈ្នះ") : GT("你输了","LOSE","KALAH","ចាញ់");
+      resEl.style.color = win ? "#34d399" : "#f87171";
       setBalance(r.balance);
       if (win) { sfx("win"); haptic("win"); } else { sfx("lose"); haptic("lose"); }
-      setTimeout(function () { popResult(r.award, true); afterPopFn = function () { busy = false; }; }, 700);
+      setTimeout(function () { popResult(r.award, true); afterPopFn = function () { busy = false; }; }, 650);
     }
   })();
 
@@ -790,7 +835,7 @@
   var TR = {
     "🎫 买一张新卡":{en:"🎫 New card",ms:"🎫 Kad baru",km:"🎫 កាតថ្មី"},
     "刮开看看手气":{en:"Scratch to reveal",ms:"Calar untuk lihat",km:"កោសមើល"},
-    "用手指涂抹刮开，刮开 60% 自动揭晓 🪙":{en:"Scratch with your finger — 60% auto-reveals 🪙",ms:"Calar dengan jari — 60% dedah 🪙",km:"កោសដោយម្រាមដៃ — 60% បង្ហាញ 🪙"},
+    "用手指涂抹刮开，露出数字即自动揭晓 🪙":{en:"Scratch with your finger — reveals once the number shows 🪙",ms:"Calar dengan jari — dedah bila nombor muncul 🪙",km:"កោសដោយម្រាមដៃ — បង្ហាញពេលឃើញលេខ 🪙"},
     "VS":{en:"VS",ms:"VS",km:"VS"},
     "玩家":{en:"Player",ms:"Pemain",km:"អ្នកលេង"},
     "🎮 游戏大厅":{en:"🎮 GAME HALL",ms:"🎮 LOBI PERMAINAN",km:"🎮 សាលហ្គេម"},
@@ -814,7 +859,12 @@
     "⚽ 射门":{en:"⚽ Shoot",ms:"⚽ Tendang",km:"⚽ ទាត់"},"选方向射门，破门即中奖 ⚽":{en:"Pick a direction — score to win ⚽",ms:"Pilih arah — jaring untuk menang ⚽",km:"ជ្រើសទិស — ស៊ុតបញ្ចូលដើម្បីឈ្នះ ⚽"},
     "出拳对决，赢了中奖 ✊✋✌️":{en:"Throw hands — win to score ✊✋✌️",ms:"Lawan — menang untuk menang ✊✋✌️",km:"ប្រកួត — ឈ្នះដើម្បីទទួល ✊✋✌️"},
     "左路":{en:"Left",ms:"Kiri",km:"ឆ្វេង"},"中路":{en:"Center",ms:"Tengah",km:"កណ្តាល"},"右路":{en:"Right",ms:"Kanan",km:"ស្តាំ"},
-    "石头":{en:"Rock",ms:"Batu",km:"ដុំថ្ម"},"布":{en:"Paper",ms:"Kertas",km:"ក្រដាស"},"剪刀":{en:"Scissors",ms:"Gunting",km:"កន្ត្រៃ"}
+    "石头":{en:"Rock",ms:"Batu",km:"ដុំថ្ម"},"布":{en:"Paper",ms:"Kertas",km:"ក្រដាស"},"剪刀":{en:"Scissors",ms:"Gunting",km:"កន្ត្រៃ"},
+    "点击 SPIN，转盘真实物理减速停在中奖区 ✨":{en:"Tap SPIN — the wheel spins with real physics ✨",ms:"Tekan SPIN — roda berputar dengan fizik sebenar ✨",km:"ចុច SPIN — កង់បង្វិលតាមរូបវិទ្យាពិត ✨"},
+    "小球真实碰撞反弹，落入倍率槽 🎯":{en:"The ball really bounces into a multiplier slot 🎯",ms:"Bola melantun ke dalam slot pengganda 🎯",km:"បាល់លោតចូលរន្ធមេគុណ 🎯"},
+    "点击任意金蛋，大锤高高举起、猛砸而下 💥":{en:"Tap any egg — the hammer swings down hard 💥",ms:"Ketik mana-mana telur — tukul menghentam 💥",km:"ចុចស៊ុតណាមួយ — ញញួរវាយចុះ 💥"},
+    "🔵 投放弹珠":{en:"🔵 Drop ball",ms:"🔵 Jatuhkan bola",km:"🔵 ទម្លាក់បាល់"},
+    "恭喜中奖！":{en:"You won!",ms:"Anda menang!",km:"អ្នកឈ្នះ!"},"注册时间：--":{en:"Joined: --",ms:"Sertai: --",km:"ចូលរួម៖ --"}
   };
   function translateDoc(){
     if(LANG==="zh") return;
