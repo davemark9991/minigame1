@@ -473,12 +473,12 @@
 
   // 真正发奖：服务端决定 award；返回 {ok, award, balance, spins} 或 {ok:false, error}
   var GAME_KEY = { "幸运大转盘": "wheel", "普林科弹珠": "plinko", "砸金蛋": "egg", "刮刮乐": "scratch", "点球射门": "soccer", "剪刀石头布": "rps" };
-  async function requestAward(gameName) {
+  async function requestAward(gameName, lock) {
     sfx("spin");
     const res = await api("/api/spin", { game: GAME_KEY[gameName] || "wheel" });
     const d = res.data || {};
     if (d.ok) {
-      roundActive = true;                 // 本局开始：锁定导航，直到成绩公布/奖品发放
+      if (lock !== false) lockRound();    // 本局开始：锁定导航，直到成绩公布/奖品发放
       state.games++; state.won += d.award;
       state.favCount[gameName] = (state.favCount[gameName] || 0) + 1;
       renderStats();
@@ -486,8 +486,10 @@
     }
     return { ok: false, error: d.error || "fail" };
   }
-  // ---------- 一局进行中锁定导航（等成绩公布再放行） ----------
-  var roundActive = false;
+  // ---------- 一局进行中锁定导航（成绩公布即放行；并有兜底自动解锁，绝不卡死） ----------
+  var roundActive = false, _lockTimer = null;
+  function lockRound() { roundActive = true; clearTimeout(_lockTimer); _lockTimer = setTimeout(function () { roundActive = false; }, 12000); }
+  function unlockRound() { roundActive = false; clearTimeout(_lockTimer); }
   var _toastEl = null, _toastT = null;
   function toast(msg) {
     if (!_toastEl) {
@@ -503,6 +505,7 @@
     return false;
   }
   function popResult(award, ok) {
+    unlockRound();                        // 成绩已公布/奖品已发放 → 解锁导航
     if (ok) {
       var win = Number(award) > 0;
       $("popBig").textContent = win ? ("+" + award + " 🪙") : "🙁";
@@ -528,7 +531,7 @@
   document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); }); });
   document.querySelectorAll(".card").forEach(function (c) { c.addEventListener("click", function () { if (navLocked()) return; sfx("click"); openGame(c.dataset.game); }); });
   document.querySelectorAll("[data-back]").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav("lobby"); show("lobby"); }); });
-  $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); roundActive = false; afterPop(); });
+  $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); unlockRound(); afterPop(); });
 
   let afterPopFn = null;
   function afterPop() { const f = afterPopFn; afterPopFn = null; if (f) f(); }
@@ -735,12 +738,13 @@
     }
     async function newCard() {
       revealed = false; $("scratchPrize").textContent = "?";
-      const r = await requestAward("刮刮乐");
+      const r = await requestAward("刮刮乐", false);   // 发牌不锁：玩家可先离开，开始刮才锁
       if (!r.ok) { coat(); popResult(r.error, false); pending = null; return; }
       pending = r; $("scratchPrize").textContent = "+" + r.award; coat();
     }
     function scratchAt(x, y) {
       if (!pending || revealed) return;
+      lockRound();                                    // 开始刮 → 锁定，直到揭晓
       ctx.globalCompositeOperation = "destination-out";
       ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fill();
       if (cleared() > 0.25) reveal();
