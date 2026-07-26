@@ -107,8 +107,8 @@
   @keyframes knock{50%{transform:translateX(-50%) rotate(12deg)}}
 
   /* 砸金蛋 */
-  .eggs{display:flex;gap:18px;justify-content:center;align-items:flex-end;height:170px}
-  .egg{position:relative;width:78px;height:104px;cursor:pointer;transition:transform .1s}
+  .eggs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 14px;justify-items:center;width:min(88vw,320px)}
+  .egg{position:relative;width:68px;height:90px;cursor:pointer;transition:transform .1s}
   .egg .body{width:100%;height:100%;border-radius:50% 50% 48% 48%/60% 60% 40% 40%;
     background:radial-gradient(circle at 32% 28%,#fff3b0,var(--gold) 42%,#b8860b);
     box-shadow:inset -8px -10px 16px rgba(120,80,0,.5),0 10px 16px rgba(0,0,0,.45)}
@@ -181,7 +181,7 @@
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <button id="gLang" style="background:rgba(201,168,106,.1);color:var(--gold);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer">EN</button>
-      <div class="coins"><div class="coin-ico">¥</div><span id="coinVal">0</span></div>
+      <div class="coins"><div class="coin-ico">$</div><span id="coinVal">0</span></div>
     </div>
   </div>
 
@@ -256,6 +256,12 @@
           <div class="egg" data-i="0"><div class="hammer">🔨</div><div class="body"></div></div>
           <div class="egg" data-i="1"><div class="hammer">🔨</div><div class="body"></div></div>
           <div class="egg" data-i="2"><div class="hammer">🔨</div><div class="body"></div></div>
+          <div class="egg" data-i="3"><div class="hammer">🔨</div><div class="body"></div></div>
+          <div class="egg" data-i="4"><div class="hammer">🔨</div><div class="body"></div></div>
+          <div class="egg" data-i="5"><div class="hammer">🔨</div><div class="body"></div></div>
+          <div class="egg" data-i="6"><div class="hammer">🔨</div><div class="body"></div></div>
+          <div class="egg" data-i="7"><div class="hammer">🔨</div><div class="body"></div></div>
+          <div class="egg" data-i="8"><div class="hammer">🔨</div><div class="body"></div></div>
         </div>
         <canvas id="eggParticles" width="360" height="220" style="width:min(92vw,360px);position:absolute;pointer-events:none"></canvas>
         <p class="tip">点击任意金蛋，大锤高高举起、猛砸而下 💥</p>
@@ -472,12 +478,29 @@
     const res = await api("/api/spin", { game: GAME_KEY[gameName] || "wheel" });
     const d = res.data || {};
     if (d.ok) {
+      roundActive = true;                 // 本局开始：锁定导航，直到成绩公布/奖品发放
       state.games++; state.won += d.award;
       state.favCount[gameName] = (state.favCount[gameName] || 0) + 1;
       renderStats();
       return d;
     }
     return { ok: false, error: d.error || "fail" };
+  }
+  // ---------- 一局进行中锁定导航（等成绩公布再放行） ----------
+  var roundActive = false;
+  var _toastEl = null, _toastT = null;
+  function toast(msg) {
+    if (!_toastEl) {
+      _toastEl = document.createElement("div");
+      _toastEl.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:9998;background:rgba(20,19,17,.95);border:1px solid var(--line);color:var(--text);padding:10px 18px;border-radius:999px;font-size:13px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none;max-width:82vw;text-align:center";
+      document.body.appendChild(_toastEl);
+    }
+    _toastEl.textContent = msg; _toastEl.style.opacity = "1";
+    clearTimeout(_toastT); _toastT = setTimeout(function () { _toastEl.style.opacity = "0"; }, 1600);
+  }
+  function navLocked() {
+    if (roundActive) { toast(GT("本局进行中，请等成绩公布 ⏳", "Round in progress — wait for the result ⏳", "Pusingan sedang berjalan — tunggu keputusan ⏳", "កំពុងលេង — សូមរង់ចាំលទ្ធផល ⏳")); haptic("lose"); return true; }
+    return false;
   }
   function popResult(award, ok) {
     if (ok) {
@@ -502,10 +525,10 @@
     document.querySelectorAll(".scene").forEach(function (s) { s.classList.toggle("active", s.id === "scene-" + scene); });
   }
   function setNav(nav) { document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("active", b.dataset.nav === nav); }); }
-  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); }); });
-  document.querySelectorAll(".card").forEach(function (c) { c.addEventListener("click", function () { sfx("click"); openGame(c.dataset.game); }); });
-  document.querySelectorAll("[data-back]").forEach(function (b) { b.addEventListener("click", function () { sfx("click"); setNav("lobby"); show("lobby"); }); });
-  $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); afterPop(); });
+  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); }); });
+  document.querySelectorAll(".card").forEach(function (c) { c.addEventListener("click", function () { if (navLocked()) return; sfx("click"); openGame(c.dataset.game); }); });
+  document.querySelectorAll("[data-back]").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav("lobby"); show("lobby"); }); });
+  $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); roundActive = false; afterPop(); });
 
   let afterPopFn = null;
   function afterPop() { const f = afterPopFn; afterPopFn = null; if (f) f(); }
@@ -705,10 +728,10 @@
     function coat() {
       size();
       const g = ctx.createLinearGradient(0, 0, cv.width, cv.height);
-      g.addColorStop(0, "#9aa0c0"); g.addColorStop(1, "#666b8f");
+      g.addColorStop(0, "#c9c3b6"); g.addColorStop(1, "#8f897c");
       ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = g; ctx.fillRect(0, 0, cv.width, cv.height);
-      ctx.fillStyle = "rgba(255,255,255,.5)"; ctx.font = "bold 20px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("✦ 刮开涂层 ✦", cv.width / 2, cv.height / 2 + 6);
+      ctx.fillStyle = "rgba(60,54,42,.55)"; ctx.font = "bold 18px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(GT("✦ 刮开涂层 ✦", "✦ SCRATCH HERE ✦", "✦ CALAR SINI ✦", "✦ កោសទីនេះ ✦"), cv.width / 2, cv.height / 2 + 6);
     }
     async function newCard() {
       revealed = false; $("scratchPrize").textContent = "?";
@@ -719,8 +742,8 @@
     function scratchAt(x, y) {
       if (!pending || revealed) return;
       ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill();
-      if (cleared() > 0.35) reveal();
+      ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI * 2); ctx.fill();
+      if (cleared() > 0.25) reveal();
     }
     function cleared() {
       const im = ctx.getImageData(0, 0, cv.width, cv.height).data; let clear = 0, total = 0;
