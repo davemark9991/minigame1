@@ -432,19 +432,100 @@ async function handleHistory(request: Request, env: any, db: any): Promise<Respo
   return jsonResp({ ok: true, history: res.results || [] });
 }
 
-// 老虎机启动（JILI 等第三方）——目前是占位：等拿到 JILI 代理商 API 文档 + 设好密钥后接真实启动地址。
-// 真正接好后：用 JILI Agent API 换取该玩家的游戏启动 URL（seamless/transfer 钱包），返回给前端 iframe/跳转打开。
+// =========================================================================== //
+// JILI 吉利 · 转账钱包（Transfer Wallet）连接器
+// 签名算法已按官方文件的范例逐一核对通过（KeyG / md5string / yyMMd(UTC-4)）。
+// 所需密钥（只有你 Cloudflare 账号能设）：
+//   JILI_API_BASE   例：https://api.xxxxx.com   （<API URL>，找 JILI 商务要）
+//   JILI_AGENT_ID   例：Ogpro_BOOMERANGCtext_MYR
+//   JILI_AGENT_KEY  （密钥，务必只存 secret，切勿写进代码）
+//   JILI_GAME_ID    默认进入的游戏 ID（GetGameList 里取，可被前端 gameId 覆盖）
+// =========================================================================== //
+async function md5hex(s: string): Promise<string> {
+  // Cloudflare Workers 支持 crypto.subtle.digest("MD5")（CF 扩展）
+  const buf = await crypto.subtle.digest("MD5", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function jiliDate(now: Date): string {
+  const t = new Date(now.getTime() - 4 * 3600 * 1000);   // UTC-4
+  const yy = String(t.getUTCFullYear()).slice(-2);
+  const mm = String(t.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(t.getUTCDate());                      // 1~9 不补 0
+  return yy + mm + dd;
+}
+function jiliRand(): string { return Math.random().toString(36).slice(2, 8).padEnd(6, "0"); }
+// signed：参与加密的参数（按各 API 文件表格顺序）；extra：一起送出但不参与加密的参数
+async function jiliCall(env: any, path: string, signed: [string, string][], extra?: Record<string, string>): Promise<any> {
+  const agentId = String(env.JILI_AGENT_ID), agentKey = String(env.JILI_AGENT_KEY);
+  const base = String(env.JILI_API_BASE).replace(/\/+$/, "");
+  const paramStr = [...signed.map(([k, v]) => `${k}=${v}`), `AgentId=${agentId}`].join("&");
+  const kg = await md5hex(jiliDate(new Date()) + agentId + agentKey);
+  const key = jiliRand() + (await md5hex(paramStr + kg)) + jiliRand();
+  const form = new URLSearchParams();
+  for (const [k, v] of signed) form.append(k, v);
+  if (extra) for (const k in extra) form.append(k, extra[k]);
+  form.append("AgentId", agentId); form.append("Key", key);
+  const r = await fetch(base + path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString() });
+  const txt = await r.text();
+  let data: any = null; try { data = JSON.parse(txt); } catch (e) {}
+  return { status: r.status, data, raw: txt };
+}
+function jiliAccount(env: any, tgId: number): string { return "mg" + tgId; }   // AgentKey 下唯一即可
+async function jiliConfigured(env: any): Promise<boolean> { return !!(env.JILI_API_BASE && env.JILI_AGENT_ID && env.JILI_AGENT_KEY); }
+
+// 老虎机启动：转账钱包流程 —— 建号（幂等）→ 取登入网址。
+// 注：本步骤【不搬钱】，只让玩家能进入并看到 JILI 游戏。额度转入/转出（存款余额）在连通测试通过、
+//     且跑完 cash_balance 迁移后再接（见 /api/slot/settle 预留）。
 async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Response> {
   const body = await readJson(request);
   const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
-  const provider = String(body.provider || "").toLowerCase();
-  // 需要的密钥（只有你 Cloudflare 账号能设）：JILI_AGENT_ID / JILI_AGENT_KEY / JILI_API_BASE
-  if (!env.JILI_AGENT_KEY || !env.JILI_AGENT_ID || !env.JILI_API_BASE) {
-    return jsonResp({ ok: false, error: "not_configured", provider, message: "老虎机对接尚未配置（等 JILI API 文档 + 密钥）" });
+  const provider = String(body.provider || "jili").toLowerCase();
+  if (provider !== "jili") return jsonResp({ ok: false, error: "unknown_provider", provider });
+  if (!(await jiliConfigured(env))) {
+    return jsonResp({ ok: false, error: "not_configured", provider, message: "JILI 尚未配置（需 API base + AgentId + AgentKey 密钥）" });
   }
-  // TODO：在此按 JILI 文档签名并调用「获取游戏URL」接口，拿到 launch_url 后返回。
-  return jsonResp({ ok: false, error: "not_implemented", provider, message: "JILI 连接器待实现（需 API 文档）" });
+  const account = jiliAccount(env, user.id);
+  const gameId = String(body.gameId || env.JILI_GAME_ID || "1");
+  const lang = String(body.lang || "zh-CN");
+  try {
+    // 1) 建立账号（已存在会回 101 Member Exists，忽略即可）
+    await jiliCall(env, "/CreateMember", [["Account", account]]);
+    // 2) 取登入网址（Account, GameId, Lang 参与加密；HomeUrl/platform 不参与）
+    const login = await jiliCall(env, "/LoginWithoutRedirect",
+      [["Account", account], ["GameId", gameId], ["Lang", lang]],
+      { platform: String(body.platform || "web") });
+    if (login.data && login.data.ErrorCode === 0 && login.data.Data) {
+      return jsonResp({ ok: true, provider, launch_url: String(login.data.Data) });
+    }
+    return jsonResp({ ok: false, error: "jili_error", provider, code: login.data ? login.data.ErrorCode : null, message: login.data ? login.data.Message : login.raw });
+  } catch (e: any) {
+    return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) });
+  }
+}
+
+// 后台【只读】连通测试：取游戏列表（不搬钱，安全）——用来确认 API base + AgentId + AgentKey + 签名都正确
+async function adminJiliGames(env: any): Promise<Response> {
+  if (!(await jiliConfigured(env))) {
+    // 顺带自检 MD5 是否可用（应等于 9424ffdd6de016a5f90a97a55d99c717）
+    const md5test = await md5hex("19011abcd_RMBbe8e08f95357d215921f91c6a533f74d3194de52");
+    return jsonResp({ ok: false, error: "not_configured", message: "先设 JILI_API_BASE / JILI_AGENT_ID / JILI_AGENT_KEY", md5_selftest: md5test, md5_ok: md5test === "9424ffdd6de016a5f90a97a55d99c717" });
+  }
+  try {
+    const r = await jiliCall(env, "/GetGameList", []);
+    const games = r.data && Array.isArray(r.data.Data) ? r.data.Data : [];
+    return jsonResp({ ok: r.data && r.data.ErrorCode === 0, http: r.status, code: r.data ? r.data.ErrorCode : null, message: r.data ? r.data.Message : r.raw, count: games.length, games: games.slice(0, 200) });
+  } catch (e: any) { return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) }); }
+}
+// 后台【只读】查询某玩家在 JILI 的钱包余额/状态（不搬钱）
+async function adminJiliMember(env: any, body: any): Promise<Response> {
+  if (!(await jiliConfigured(env))) return jsonResp({ ok: false, error: "not_configured" });
+  const account = String(body.account || "").trim();
+  if (!account) return jsonResp({ ok: false, error: "bad_input", message: "account required" });
+  try {
+    const r = await jiliCall(env, "/GetMemberInfo", [["Accounts", account]]);
+    return jsonResp({ ok: r.data && r.data.ErrorCode === 0, http: r.status, code: r.data ? r.data.ErrorCode : null, message: r.data ? r.data.Message : r.raw, data: r.data ? r.data.Data : null });
+  } catch (e: any) { return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) }); }
 }
 
 async function handleSpin(request: Request, env: any, db: any): Promise<Response> {
@@ -580,6 +661,8 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/apic/list":       return adminApiList(db, body);
       case "/api/admin/apic/credit":     return extCredit(db, body);
       case "/api/admin/apic/totals":     return adminSourceTotals(db);
+      case "/api/admin/jili/games":      return adminJiliGames(env);
+      case "/api/admin/jili/member":     return adminJiliMember(env, body);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
