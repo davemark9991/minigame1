@@ -675,7 +675,13 @@ async function adminJiliMember(env: any, db: any, body: any): Promise<Response> 
 async function adminMigrate(db: any): Promise<Response> {
   const results: any = {};
   const migrations: [string, string][] = [
-    ["cash_balance", `ALTER TABLE players ADD COLUMN cash_balance REAL NOT NULL DEFAULT 0`],
+    ["status",        `ALTER TABLE players ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`],
+    ["last_reset",    `ALTER TABLE players ADD COLUMN last_reset TEXT`],
+    ["player_id",     `ALTER TABLE players ADD COLUMN player_id TEXT`],
+    ["lang",          `ALTER TABLE players ADD COLUMN lang TEXT`],
+    ["company_name",  `ALTER TABLE players ADD COLUMN company_name TEXT`],
+    ["total_deposit", `ALTER TABLE players ADD COLUMN total_deposit INTEGER NOT NULL DEFAULT 0`],
+    ["cash_balance",  `ALTER TABLE players ADD COLUMN cash_balance REAL NOT NULL DEFAULT 0`],
   ];
   for (const [name, sql] of migrations) {
     try { await db.prepare(sql).run(); results[name] = "added"; }
