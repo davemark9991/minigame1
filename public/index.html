@@ -92,8 +92,11 @@
     background:linear-gradient(160deg,#2a2318,#161512);border:1px solid rgba(201,168,106,.28);
     box-shadow:0 6px 16px rgba(0,0,0,.4);transition:transform .1s}
   .slot-card:active{transform:scale(.96)}
-  .slot-thumb{width:100%;aspect-ratio:1;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  .slot-thumb{width:100%;aspect-ratio:1;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;
     background:radial-gradient(circle at 50% 35%,#3a3020,#171512 70%);border:1px solid var(--line);font-size:34px}
+  .slot-thumb::before{content:"🎰";position:absolute;font-size:30px;opacity:.5}
+  .slot-thumb img{position:relative;width:100%;height:100%;object-fit:cover;display:block}
+  .slot-card{position:relative}
   .slot-badge{position:absolute;top:6px;right:6px;font-size:9px;font-weight:800;color:#1a1712;
     background:linear-gradient(180deg,#ffd36b,var(--gold));border-radius:6px;padding:1px 5px}
   .slot-name{font-weight:700;font-size:11px;color:var(--text);line-height:1.2;
@@ -610,7 +613,7 @@
         var nm = slotGameName(g.name);
         return '<div class="slot-card" data-gid="' + g.id + '">' +
             (g.jp ? '<div class="slot-badge">JP</div>' : '') +
-            '<div class="slot-thumb">🎰</div>' +
+            '<div class="slot-thumb"><img src="https://cdn.vefrop.com/games/jili/' + g.id + '.png" loading="lazy" alt="" onerror="this.remove()"></div>' +
             '<div class="slot-name">' + nm.replace(/</g, "&lt;") + '</div>' +
           '</div>';
       }).join('');
