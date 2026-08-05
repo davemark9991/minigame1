@@ -558,6 +558,7 @@ async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Re
     // 3) 把存款余额转入 JILI（type=2）；成功后 cash_balance 清零
     const p: any = await db.prepare(`SELECT cash_balance FROM players WHERE tg_id=?`).bind(user.id).first();
     const cash = Math.round(Number(p && p.cash_balance || 0) * 100) / 100;
+    let transferWarn: any = null;
     if (cash > 0) {
       const t = await jiliCall(cfg, "/ExchangeTransferByAgentId",
         [["Account", account], ["TransactionId", jiliTxnId(user.id)], ["Amount", String(cash)], ["TransferType", "2"]]);
@@ -565,7 +566,8 @@ async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Re
         await db.prepare(`UPDATE players SET cash_balance=0 WHERE tg_id=?`).bind(user.id).run();
         await logTx(db, user.id, "slot_in", -cash, 0, "转入 JILI");
       } else {
-        return jsonResp({ ok: false, error: "transfer_in_failed", code: t.data ? t.data.ErrorCode : null, message: t.data ? t.data.Message : t.raw });
+        // 转账失败（如代理为 seamless 模式，转账钱包接口不可用）——不搬钱、不阻断进入
+        transferWarn = { code: t.data ? t.data.ErrorCode : null, message: t.data ? t.data.Message : t.raw };
       }
     }
     // 4) 取登入网址
@@ -573,7 +575,7 @@ async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Re
       [["Account", account], ["GameId", gameId], ["Lang", lang]],
       { platform: String(body.platform || "web") });
     if (login.data && login.data.ErrorCode === 0 && login.data.Data) {
-      return jsonResp({ ok: true, provider, launch_url: String(login.data.Data) });
+      return jsonResp({ ok: true, provider, launch_url: String(login.data.Data), transfer_warn: transferWarn });
     }
     return jsonResp({ ok: false, error: "jili_error", provider, code: login.data ? login.data.ErrorCode : null, message: login.data ? login.data.Message : login.raw });
   } catch (e: any) {
