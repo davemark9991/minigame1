@@ -165,8 +165,9 @@
   /* ============== 底部导航 ============== */
   .nav{position:absolute;left:0;right:0;bottom:0;display:flex;background:rgba(18,18,20,.94);
     border-top:1px solid var(--line);backdrop-filter:blur(8px)}
-  .nav button{flex:1;background:none;border:none;color:var(--muted);padding:11px 0 14px;
-    font-size:12px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+  .nav button{flex:1;background:none;border:none;color:var(--muted);padding:11px 2px 14px;
+    font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+    line-height:1.15;text-align:center}
   .nav button .ic{font-size:22px}
   .nav button.active{color:var(--gold)}
 
@@ -205,9 +206,10 @@
   </div>
 
   <div class="stage">
-    <!-- ===== 游戏大厅 ===== -->
-    <section class="scene active" id="scene-lobby">
-      <div class="h-title">🎮 游戏大厅</div>
+    <!-- ===== 迷你游戏（积分游玩） ===== -->
+    <section class="scene" id="scene-lobby">
+      <div class="h-title">🎮 迷你游戏</div>
+      <p class="tip" style="margin:-4px 2px 12px">🎮 迷你游戏用「游戏积分」游玩</p>
       <div class="grid">
         <div class="card" data-game="wheel"><div class="emoji">🎡</div><div class="name">幸运大转盘</div><div class="desc">物理惯性 · 大奖闪烁</div><div class="play">GO ▶</div></div>
         <div class="card" data-game="plinko"><div class="emoji">🔵</div><div class="name">普林科弹珠</div><div class="desc">真实碰撞 · 倍率槽</div><div class="play">GO ▶</div></div>
@@ -219,8 +221,8 @@
       <span id="lobbyBal" style="display:none"></span>
     </section>
 
-    <!-- ===== 个人中心 ===== -->
-    <section class="scene" id="scene-profile">
+    <!-- ===== 个人中心（登入首页） ===== -->
+    <section class="scene active" id="scene-profile">
       <div class="h-title">👤 个人中心</div>
       <div class="profile-top">
         <div class="avatar" id="avatar2"></div>
@@ -367,10 +369,10 @@
   <!-- 底部导航 -->
   <div class="nav">
     <button data-nav="slot"><span class="ic">🎰</span>老虎机</button>
-    <button class="active" data-nav="lobby"><span class="ic">🎮</span>大厅</button>
+    <button data-nav="lobby"><span class="ic">🎮</span>迷你游戏</button>
     <button data-nav="vip"><span class="ic">👑</span>VIP</button>
     <button data-nav="history"><span class="ic">🧾</span>历史</button>
-    <button data-nav="profile"><span class="ic">👤</span>我的</button>
+    <button class="active" data-nav="profile"><span class="ic">👤</span>我的</button>
   </div>
 </div>
 
@@ -1011,9 +1013,10 @@
     "刮刮乐":{en:"Scratch",ms:"Calar",km:"កោស"},"手指涂抹 · 自动揭晓":{en:"Scratch to reveal",ms:"Calar untuk dedah",km:"កោសដើម្បីបង្ហាញ"},
     "👤 个人中心":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
     "🧾 历史记录":{en:"🧾 HISTORY",ms:"🧾 SEJARAH",km:"🧾 ប្រវត្តិ"},"历史记录":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},
-    "老虎机":{en:"Slots",ms:"Slot",km:"ស្លត"},"大厅":{en:"Lobby",ms:"Lobi",km:"សាល"},"历史":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},"我的":{en:"Me",ms:"Saya",km:"ខ្ញុំ"},
+    "老虎机":{en:"Slots",ms:"Slot",km:"ស្លត"},"迷你游戏":{en:"Mini Games",ms:"Mini Game",km:"ល្បែងតូច"},"🎮 迷你游戏":{en:"🎮 MINI GAMES",ms:"🎮 MINI GAME",km:"🎮 ល្បែងតូច"},"历史":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},"我的":{en:"Me",ms:"Saya",km:"ខ្ញុំ"},
     "🎰 老虎机":{en:"🎰 SLOTS",ms:"🎰 SLOT",km:"🎰 ស្លត"},"JILI 电子":{en:"JILI Slots",ms:"JILI Slot",km:"JILI ស្លត"},"经典老虎机 · 真钱游戏":{en:"Classic slots · real-money",ms:"Slot klasik · wang sebenar",km:"ស្លតបុរាណ · លុយពិត"},"进入 ▶":{en:"Enter ▶",ms:"Masuk ▶",km:"ចូល ▶"},
     "🎰 用「存款余额」进入第三方老虎机游玩。":{en:"🎰 Use your Deposit Balance to play third-party slots.",ms:"🎰 Guna Baki Deposit untuk main slot pihak ketiga.",km:"🎰 ប្រើសមតុល្យប្រាក់បញ្ញើដើម្បីលេងស្លត។"},
+    "🎮 迷你游戏用「游戏积分」游玩":{en:"🎮 Mini games are played with your Points",ms:"🎮 Mini game guna Poin anda",km:"🎮 ល្បែងតូចលេងដោយពិន្ទុ"},
     "游戏积分":{en:"Points (mini games)",ms:"Poin (mini)",km:"ពិន្ទុ (ល្បែង)"},"存款余额":{en:"Deposit Balance",ms:"Baki Deposit",km:"សមតុល្យប្រាក់បញ្ញើ"},
     "总下注":{en:"Total Bet",ms:"Jumlah Taruh",km:"ភ្នាល់សរុប"},"累计赢取":{en:"Total Won",ms:"Jumlah Menang",km:"ឈ្នះសរុប"},"总局数":{en:"Total Plays",ms:"Jumlah Main",km:"លេងសរុប"},
     "总游戏次数":{en:"Total plays",ms:"Jumlah main",km:"ចំនួនលេងសរុប"},"累计赢取金币":{en:"Total won",ms:"Jumlah menang",km:"ឈ្នះសរុប"},"当前余额":{en:"Balance",ms:"Baki",km:"សមតុល្យ"},"最喜欢的游戏":{en:"Favorite",ms:"Kegemaran",km:"ចូលចិត្ត"},"暂无":{en:"None",ms:"Tiada",km:"គ្មាន"},
