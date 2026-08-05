@@ -1,5 +1,5 @@
 // MINI GAME PWA Service Worker（游戏厅 + 管理后台共用）
-const CACHE = 'mg-v3';
+const CACHE = 'mg-v4';
 const SHELL = ['/', '/admin'];
 
 self.addEventListener('install', (e) => {
