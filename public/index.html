@@ -288,7 +288,7 @@
       <div id="slotProviders">
         <p class="tip" style="margin:-4px 2px 12px">🎰 用「存款余额」游玩第三方老虎机</p>
         <div class="slot-provider" data-provider="jili">
-          <div class="sp-logo">JILI</div>
+          <div class="sp-logo" id="spLogo">JILI</div>
           <div class="sp-info"><div class="sp-name">JILI 电子</div><div class="sp-desc">热门老虎机 · 真钱游戏</div></div>
           <div class="sp-go">进入 ▶</div>
         </div>
@@ -508,6 +508,7 @@
         var sw = $("stWin"); if (sw) sw.textContent = Number(d.total_won || 0).toLocaleString();
         var sg = $("stGames"); if (sg) sg.textContent = Number(d.total_plays || 0).toLocaleString();
         if (d.player_id) { var j = $("joined"); if (j) j.textContent = GT("会员ID：", "Member ID: ", "ID Ahli: ", "លេខសមាជិក៖ ") + d.player_id; }
+        if (d.theme) applyTheme(d.theme);
         renderVip(d);
       }
     } catch (e) {}
@@ -593,6 +594,10 @@
   function slotLangCode() { return mgLang === "zh" ? "zh-CN" : "en-US"; }   // JILI 只有 zh-CN/zh-TW/en-US
   function slotGameName(nm) { nm = nm || {}; return nm[slotLangCode()] || nm["en-US"] || nm["zh-CN"] || "Game"; }
   var _slotGamesLoaded = false;
+  function applyTheme(theme) {
+    var logo = $("spLogo"); if (!logo) return;
+    if (theme && theme.jili_logo) logo.innerHTML = '<img src="' + theme.jili_logo.replace(/"/g, "") + '" alt="JILI" style="height:36px;display:block" onerror="this.parentNode.textContent=\'JILI\'">';
+  }
   function showSlotProviders() { var p = $("slotProviders"), v = $("slotGamesView"); if (p) p.style.display = ""; if (v) v.style.display = "none"; }
   function showSlotGames() { var p = $("slotProviders"), v = $("slotGamesView"); if (p) p.style.display = "none"; if (v) v.style.display = ""; if (!_slotGamesLoaded) { _slotGamesLoaded = true; loadSlotGames(); } }
   // 内嵌 iframe 开玩：留在 App(H5)里，不跳 Chrome

@@ -441,8 +441,8 @@ async function viewUsers(){
   panel.innerHTML = `<div class="ph"><h3>玩家列表</h3>
     <div class="filters"><input class="input search" id="uq" placeholder="🔎 搜索 会员ID / 昵称 / Telegram ID"></div></div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>会员ID</th><th>Telegram ID</th><th>昵称</th><th>积分</th><th>状态</th><th>操作</th>
-    </tr></thead><tbody id="ubody"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody></table></div>`;
+      <th>会员ID</th><th>Telegram ID</th><th>昵称</th><th>积分</th><th>存款余额</th><th>状态</th><th>操作</th>
+    </tr></thead><tbody id="ubody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody></table></div>`;
   $("#content").innerHTML=""; $("#content").appendChild(panel);
 
   const load = async q=>{
@@ -454,22 +454,25 @@ async function viewUsers(){
 }
 function renderUsers(rows){
   const b=$("#ubody"); b.innerHTML="";
-  if(!rows.length){ b.innerHTML='<tr><td colspan="6" class="empty">暂无玩家</td></tr>'; return; }
+  if(!rows.length){ b.innerHTML='<tr><td colspan="7" class="empty">暂无玩家</td></tr>'; return; }
   rows.forEach(p=>{
     const tr=el("tr");
     tr.innerHTML = `<td class="mono" style="color:var(--accent)">${esc(p.player_id)||"—"}</td><td class="mono">${p.tg_id}</td><td>${esc(p.username)||"<span style='color:var(--faint)'>—</span>"}</td>
       <td class="mono">${fmt(p.balance)}</td>
+      <td class="mono" style="color:var(--accent)">${fmt(p.cash_balance||0)}</td>
       <td><span class="pill ${p.status==='banned'?'banned':'active'}">${p.status==='banned'?'已封禁':'正常'}</span></td>`;
     const act=el("td"); const wrap=el("div","rowact");
     const bg=el("button","btn pos sm","➕分"), bd=el("button","btn neg sm","➖分"),
+          bdep=el("button","btn pos sm","💵存"), bwd=el("button","btn neg sm","💸提"),
           bb=el("button","btn "+(p.status==='banned'?"warn":"ghost")+" sm",p.status==='banned'?"解封":"封禁"),
           bh=el("button","btn ghost sm","明细"),
           bx=el("button","btn neg sm","🗑");
     bg.onclick=()=>adjustModal(p,1); bd.onclick=()=>adjustModal(p,-1);
+    bdep.onclick=()=>cashModal(p,"deposit"); bwd.onclick=()=>cashModal(p,"withdraw");
     bb.onclick=()=>banPlayer(p);
     bh.onclick=()=>playerHistory(p);
     bx.onclick=()=>deletePlayer(p);
-    wrap.append(bg,bd,bb,bh,bx); act.appendChild(wrap); tr.appendChild(act); b.appendChild(tr);
+    wrap.append(bg,bd,bdep,bwd,bb,bh,bx); act.appendChild(wrap); tr.appendChild(act); b.appendChild(tr);
   });
 }
 function adjustModal(p,sign){
@@ -480,6 +483,20 @@ function adjustModal(p,sign){
       const amt=Math.abs(parseInt($("#mAmt").value,10)||0); if(!amt) return toast("请输入数量","bad");
       await api("adjust",{tg_id:p.tg_id,amount:sign*amt,note:$("#mNote").value.trim()});
       toast(L("已"+(sign>0?"赠送":"扣除")+" "+amt+" 分", (sign>0?"Granted ":"Deducted ")+amt+" pts"),"ok"); closeModal(); refreshUsers();
+    });
+}
+function cashModal(p,kind){
+  const isDep = kind==="deposit";
+  modal(L(isDep?"手动存款":"手动提款", isDep?"Deposit":"Withdraw"),
+    L(`玩家 <b>${esc(p.username)||p.tg_id}</b>（存款余额 ${fmt(p.cash_balance||0)}）`, `Player <b>${esc(p.username)||p.tg_id}</b> (deposit balance ${fmt(p.cash_balance||0)})`),
+    `<div class="field"><label>${L("金额","Amount")}</label><input class="input" id="cAmt" type="number" min="0" step="0.01" value="100"></div>
+     <div class="field"><label>${L("备注（可选）","Note (optional)")}</label><input class="input" id="cNote" placeholder="${L("例如：银行转账","e.g. bank transfer")}"></div>`,
+    async()=>{
+      const amt=Math.abs(parseFloat($("#cAmt").value)||0); if(!amt) return toast(L("请输入金额","Enter amount"),"bad");
+      try{
+        const r=await api("cash/adjust",{tg_id:p.tg_id,amount:amt,type:kind,note:$("#cNote").value.trim()});
+        toast(L((isDep?"已存款 ":"已提款 ")+amt+"，余额 "+fmt(r.cash_balance), (isDep?"Deposited ":"Withdrew ")+amt),"ok"); closeModal(); refreshUsers();
+      }catch(e){ toast(e.message,"bad"); }
     });
 }
 async function banPlayer(p){
@@ -569,9 +586,11 @@ function renderTx(rows){
 /* ---------- Settings ---------- */
 const GAME_LABELS = { wheel:"🎡 幸运大转盘", plinko:"🔵 普林科弹珠", egg:"🥚 砸金蛋", scratch:"🎫 刮刮乐", soccer:"⚽ 点球射门", rps:"✊ 剪刀石头布" };
 let setData = null;
+let themeData = null;
 async function viewSettings(){
   try{ setData=(await api("settings/get")).settings; }
   catch(e){ $("#content").innerHTML=`<div class="empty">${esc(e.message)}</div>`; return; }
+  try{ themeData=(await api("theme/get")).theme; }catch(e){ themeData={}; }
   if(!setData.games) setData.games={};
   Object.keys(GAME_LABELS).forEach(k=>{ if(!setData.games[k]) setData.games[k]={bet:50,enabled:true,prizes:[]}; if(!Array.isArray(setData.games[k].prizes)) setData.games[k].prizes=[]; });
   renderSettings();
@@ -595,10 +614,19 @@ function renderSettings(){
       <div style="padding:10px 16px"><button class="btn ghost sm addPrize" data-g="${k}">➕ 添加奖品</button></div>
     </div>`;
   }).join("");
+  const th = themeData||{};
   $("#content").innerHTML=`
     <div class="panel"><div class="ph"><h3>全局</h3></div>
       <div class="formgrid"><div class="field"><label>新玩家初始积分（建议 0，靠后台加分）</label>
         <input class="input" id="s_start_balance" type="number" min="0" value="${s.start_balance}"></div></div></div>
+    <div class="panel"><div class="ph"><h3>🎨 品牌 / 主题</h3></div>
+      <div class="formgrid"><div class="field">
+        <label>JILI LOGO 图片直链 URL（透明底 PNG，建议正方形 <b>240×240</b>，前台展示约 56px）</label>
+        <input class="input" id="t_jili_logo" placeholder="https://.../jili-logo.png" value="${esc(th.jili_logo||'')}">
+        <div style="margin-top:8px">${th.jili_logo?`<img src="${esc(th.jili_logo)}" style="height:48px;border-radius:8px;background:#222;padding:4px">`:'<span style="color:var(--faint);font-size:12px">未设置时前台显示金色「JILI」文字标</span>'}</div>
+      </div></div>
+      <div style="padding:0 16px 16px"><button class="btn" id="saveTheme">💾 保存品牌设置</button></div>
+    </div>`;
     ${gameCards}
     <div style="display:flex;gap:10px;align-items:center;margin:16px 0;flex-wrap:wrap">
       <button class="btn" id="saveSet">💾 保存全部设置</button>
@@ -609,6 +637,10 @@ function renderSettings(){
   document.querySelectorAll(".g-bet").forEach(inp=>inp.oninput=()=>{ setData.games[inp.dataset.g].bet=inp.value; updateEV(inp.dataset.g); });
   document.querySelectorAll(".g-enabled").forEach(c=>c.onchange=()=>{ setData.games[c.dataset.g].enabled=c.checked; });
   $("#saveSet").onclick=saveSettings;
+  const stBtn=$("#saveTheme"); if(stBtn) stBtn.onclick=async()=>{
+    try{ await api("theme/save",{jili_logo:$("#t_jili_logo").value.trim()}); toast(L("品牌设置已保存","Theme saved"),"ok"); viewSettings(); }
+    catch(e){ toast(e.message,"bad"); }
+  };
 }
 function renderPrizeRows(k){
   const body=document.querySelector('.prizeBody[data-g="'+k+'"]'); if(!body) return;

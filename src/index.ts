@@ -419,7 +419,8 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
     vip: vip.level,
     vip_name: vip.name,
     vip_tiers: vipTiers,
-    company_name: p ? (p.company_name || "") : ""
+    company_name: p ? (p.company_name || "") : "",
+    theme: await getThemeConfig(db)
   });
 }
 
@@ -673,6 +674,33 @@ async function adminJiliMember(env: any, db: any, body: any): Promise<Response> 
   } catch (e: any) { return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) }); }
 }
 
+// 主题/品牌资源槽位（存 D1 settings，key 前缀 theme_）。前端读取用于展示 logo 等。
+async function getThemeConfig(db: any): Promise<any> {
+  const theme: any = { jili_logo: "" };
+  try {
+    const res: any = await db.prepare(`SELECT key, value FROM settings WHERE key LIKE 'theme_%'`).all();
+    for (const r of res.results || []) {
+      const k = String(r.key).replace(/^theme_/, "");
+      theme[k] = r.value || "";
+    }
+  } catch (e) {}
+  return theme;
+}
+async function adminThemeGet(db: any): Promise<Response> {
+  return jsonResp({ ok: true, theme: await getThemeConfig(db) });
+}
+async function adminThemeSave(db: any, body: any): Promise<Response> {
+  // 允许保存的槽位（图片直链 URL）。JILI logo 建议：透明底 PNG，正方形约 240×240（展示 56px）。
+  const allow = ["jili_logo"];
+  let saved = 0;
+  for (const k of allow) {
+    if (typeof body[k] === "undefined") continue;
+    await db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).bind("theme_" + k, String(body[k] || "").trim()).run();
+    saved++;
+  }
+  return jsonResp({ ok: true, saved });
+}
+
 // 迁移：给 players 加 cash_balance（存款余额/现金钱包）列。幂等：已存在会报错，忽略。只加列，不动任何现有余额。
 async function adminMigrate(db: any): Promise<Response> {
   const results: any = {};
@@ -861,6 +889,8 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/jili/config/save":return adminJiliConfigSave(db, body);
       case "/api/admin/migrate":         return adminMigrate(db);
       case "/api/admin/cash/adjust":     return adminCashAdjust(db, body, admin);
+      case "/api/admin/theme/get":       return adminThemeGet(db);
+      case "/api/admin/theme/save":      return adminThemeSave(db, body);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
