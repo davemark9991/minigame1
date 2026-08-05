@@ -686,27 +686,32 @@ async function adminMigrate(db: any): Promise<Response> {
 
 // 后台手动存款/提款（操作现金钱包 cash_balance = 存款余额）
 async function adminCashAdjust(db: any, body: any, admin: any): Promise<Response> {
-  const tg_id = parseInt(body.tg_id, 10);
-  const amount = Math.round((parseFloat(body.amount) || 0) * 100) / 100;   // 保留 2 位
-  const kind = String(body.type || "deposit");   // deposit | withdraw
-  const note = String(body.note || "").slice(0, 200);
-  if (!tg_id || amount <= 0) return jsonResp({ ok: false, error: "bad_input", message: "tg_id 和正数 amount 必填" });
-  const p: any = await db.prepare(`SELECT cash_balance, total_deposit FROM players WHERE tg_id = ?`).bind(tg_id).first();
-  if (!p) return jsonResp({ ok: false, error: "not_found", message: "玩家不存在" });
-  const cur = Number(p.cash_balance || 0);
-  if (kind === "withdraw") {
-    if (cur < amount) return jsonResp({ ok: false, error: "insufficient", cash_balance: cur, message: "存款余额不足" });
-    const nb = Math.round((cur - amount) * 100) / 100;
-    await db.prepare(`UPDATE players SET cash_balance = ? WHERE tg_id = ?`).bind(nb, tg_id).run();
-    await logTx(db, tg_id, "withdraw", -amount, nb, note || ("提款 " + amount + " · " + (admin && admin.username || "")));
-    return jsonResp({ ok: true, cash_balance: nb });
+  try {
+    const tg_id = parseInt(body.tg_id, 10);
+    const amount = Math.round((parseFloat(body.amount) || 0) * 100) / 100;   // 保留 2 位
+    const kind = String(body.type || "deposit");   // deposit | withdraw
+    const note = String(body.note || "").slice(0, 200);
+    if (!tg_id || amount <= 0) return jsonResp({ ok: false, error: "bad_input", message: "tg_id 和正数 amount 必填" });
+    const p: any = await db.prepare(`SELECT cash_balance, total_deposit FROM players WHERE tg_id = ?`).bind(tg_id).first();
+    if (!p) return jsonResp({ ok: false, error: "not_found", message: "玩家不存在" });
+    const cur = Number(p.cash_balance || 0);
+    const staff = (admin && admin.username) || "";
+    if (kind === "withdraw") {
+      if (cur < amount) return jsonResp({ ok: false, error: "insufficient", cash_balance: cur, message: "存款余额不足" });
+      const nb = Math.round((cur - amount) * 100) / 100;
+      await db.prepare(`UPDATE players SET cash_balance = ? WHERE tg_id = ?`).bind(nb, tg_id).run();
+      await logTx(db, tg_id, "withdraw", -amount, nb, note || ("提款 " + amount + " · " + staff));
+      return jsonResp({ ok: true, cash_balance: nb });
+    }
+    // deposit：现金钱包 + 累计存款（VIP）一起加
+    const nb = Math.round((cur + amount) * 100) / 100;
+    const nd = Number(p.total_deposit || 0) + amount;
+    await db.prepare(`UPDATE players SET cash_balance = ?, total_deposit = ? WHERE tg_id = ?`).bind(nb, nd, tg_id).run();
+    await logTx(db, tg_id, "deposit", amount, nb, note || ("存款 " + amount + " · " + staff));
+    return jsonResp({ ok: true, cash_balance: nb, total_deposit: nd });
+  } catch (e: any) {
+    return jsonResp({ ok: false, error: "server", detail: String(e && e.message || e) }, 500);
   }
-  // deposit：现金钱包 + 累计存款（VIP）一起加
-  const nb = Math.round((cur + amount) * 100) / 100;
-  const nd = Number(p.total_deposit || 0) + amount;
-  await db.prepare(`UPDATE players SET cash_balance = ?, total_deposit = ? WHERE tg_id = ?`).bind(nb, nd, tg_id).run();
-  await logTx(db, tg_id, "deposit", amount, nb, note || ("存款 " + amount + " · " + (admin && admin.username || "")));
-  return jsonResp({ ok: true, cash_balance: nb, total_deposit: nd });
 }
 
 async function handleSpin(request: Request, env: any, db: any): Promise<Response> {
