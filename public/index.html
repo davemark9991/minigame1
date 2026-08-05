@@ -102,6 +102,11 @@
   .slot-name{font-weight:700;font-size:11px;color:var(--text);line-height:1.2;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:26px}
   .slot-msg{text-align:center;color:var(--muted);font-size:13px;padding:36px 16px;line-height:1.7}
+  /* ============== 历史记录分类 tab ============== */
+  .htabs{display:flex;gap:8px;margin:0 2px 12px}
+  .htab{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:999px;
+    padding:8px 4px;font-size:12px;font-weight:700;cursor:pointer}
+  .htab.active{background:rgba(201,168,106,.15);border-color:var(--gold);color:var(--gold)}
 
   /* ============== 游戏房间通用 ============== */
   /* 游戏房间：一屏放下，不滚动 */
@@ -268,6 +273,11 @@
     <!-- ===== 历史记录 ===== -->
     <section class="scene" id="scene-history">
       <div class="h-title">🧾 历史记录</div>
+      <div class="htabs">
+        <button class="htab active" data-cat="mini">迷你游戏</button>
+        <button class="htab" data-cat="slot">老虎机</button>
+        <button class="htab" data-cat="deposit">存取款</button>
+      </div>
       <div id="historyBox"></div>
     </section>
 
@@ -493,7 +503,7 @@
       if (res.data && res.data.ok) {
         var d = res.data;
         setBalance(d.balance || 0); setSpins(d.spins || 0);
-        var wd = $("wDeposit"); if (wd) wd.textContent = Number(d.total_deposit || 0).toLocaleString();
+        var wd = $("wDeposit"); if (wd) wd.textContent = Number(d.cash_balance || 0).toLocaleString();
         var sb = $("stBet"); if (sb) sb.textContent = Number(d.total_bet || 0).toLocaleString();
         var sw = $("stWin"); if (sw) sw.textContent = Number(d.total_won || 0).toLocaleString();
         var sg = $("stGames"); if (sg) sg.textContent = Number(d.total_plays || 0).toLocaleString();
@@ -503,11 +513,12 @@
     } catch (e) {}
   }
   // ---------- 历史记录（玩家自助查看本人流水） ----------
+  var _histCat = "mini";
   async function loadHistory() {
     var box = $("historyBox"); if (!box) return;
     box.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px;font-size:13px">' + GT("加载中…", "Loading…", "Memuatkan…", "កំពុងផ្ទុក…") + '</div>';
     try {
-      const res = await api("/api/history", { limit: 50 });
+      const res = await api("/api/history", { limit: 50, category: _histCat });
       if (res.data && res.data.ok) renderHistory(res.data.history || []);
       else box.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px;font-size:13px">' + GT("暂无记录", "No records yet", "Tiada rekod", "គ្មានកំណត់ត្រា") + '</div>';
     } catch (e) {
@@ -517,7 +528,10 @@
   function historyTypeLabel(type) {
     switch (type) {
       case "spin":       return GT("游戏", "Game", "Permainan", "ហ្គេម");
-      case "deposit":    return GT("充值", "Deposit", "Deposit", "ដាក់ប្រាក់");
+      case "deposit":    return GT("存款", "Deposit", "Deposit", "ដាក់ប្រាក់");
+      case "withdraw":   return GT("提款", "Withdraw", "Pengeluaran", "ដកប្រាក់");
+      case "slot_in":    return GT("转入老虎机", "Into slots", "Ke slot", "ចូលស្លត");
+      case "slot_out":   return GT("老虎机转回", "From slots", "Dari slot", "ចេញពីស្លត");
       case "ext_credit": return GT("转分入账", "Credit in", "Kredit masuk", "បញ្ចូលពិន្ទុ");
       case "admin_grant":return GT("系统加分", "Bonus", "Bonus", "ប្រាក់រង្វាន់");
       case "admin_deduct":return GT("系统扣分", "Deduction", "Potongan", "កាត់ពិន្ទុ");
@@ -743,6 +757,14 @@
   // 老虎机：点分类进游戏列表 / 返回
   document.querySelectorAll(".slot-provider").forEach(function (c) { c.addEventListener("click", function () { sfx("click"); if (c.dataset.provider === "jili") showSlotGames(); }); });
   (function () { var sb = $("slotBack"); if (sb) sb.addEventListener("click", function () { sfx("click"); showSlotProviders(); }); })();
+  // 历史记录分类 tab
+  document.querySelectorAll(".htab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      sfx("click");
+      document.querySelectorAll(".htab").forEach(function (x) { x.classList.remove("active"); });
+      t.classList.add("active"); _histCat = t.dataset.cat; loadHistory();
+    });
+  });
   $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); unlockRound(); afterPop(); });
 
   let afterPopFn = null;
@@ -1084,7 +1106,7 @@
     "刮刮乐":{en:"Scratch",ms:"Calar",km:"កោស"},"手指涂抹 · 自动揭晓":{en:"Scratch to reveal",ms:"Calar untuk dedah",km:"កោសដើម្បីបង្ហាញ"},
     "👤 个人中心":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
     "🧾 历史记录":{en:"🧾 HISTORY",ms:"🧾 SEJARAH",km:"🧾 ប្រវត្តិ"},"历史记录":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},
-    "老虎机":{en:"Slots",ms:"Slot",km:"ស្លត"},"迷你游戏":{en:"Mini Games",ms:"Mini Game",km:"ល្បែងតូច"},"🎮 迷你游戏":{en:"🎮 MINI GAMES",ms:"🎮 MINI GAME",km:"🎮 ល្បែងតូច"},"历史":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},"我的":{en:"Me",ms:"Saya",km:"ខ្ញុំ"},
+    "老虎机":{en:"Slots",ms:"Slot",km:"ស្លត"},"迷你游戏":{en:"Mini Games",ms:"Mini Game",km:"ល្បែងតូច"},"🎮 迷你游戏":{en:"🎮 MINI GAMES",ms:"🎮 MINI GAME",km:"🎮 ល្បែងតូច"},"历史":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},"我的":{en:"Me",ms:"Saya",km:"ខ្ញុំ"},"存取款":{en:"Deposit/Withdraw",ms:"Deposit/Keluar",km:"ដាក់/ដក"},
     "🎰 老虎机":{en:"🎰 SLOTS",ms:"🎰 SLOT",km:"🎰 ស្លត"},"🎰 老虎机 · JILI":{en:"🎰 SLOTS · JILI",ms:"🎰 SLOT · JILI",km:"🎰 ស្លត · JILI"},"JILI 电子":{en:"JILI Slots",ms:"JILI Slot",km:"JILI ស្លត"},"经典老虎机 · 真钱游戏":{en:"Classic slots · real-money",ms:"Slot klasik · wang sebenar",km:"ស្លតបុរាណ · លុយពិត"},"热门老虎机 · 真钱游戏":{en:"Popular slots · real-money",ms:"Slot popular · wang sebenar",km:"ស្លតពេញនិយម · លុយពិត"},"进入 ▶":{en:"Enter ▶",ms:"Masuk ▶",km:"ចូល ▶"},
     "🎰 用「存款余额」游玩第三方老虎机":{en:"🎰 Play third-party slots with your Deposit Balance",ms:"🎰 Main slot pihak ketiga guna Baki Deposit",km:"🎰 លេងស្លតដោយសមតុល្យប្រាក់បញ្ញើ"},"🎰 点游戏直接在这里玩":{en:"🎰 Tap a game to play right here",ms:"🎰 Ketik game untuk main di sini",km:"🎰 ចុចហ្គេមលេងនៅទីនេះ"},
     "🎰 用「存款余额」进入第三方老虎机游玩。":{en:"🎰 Use your Deposit Balance to play third-party slots.",ms:"🎰 Guna Baki Deposit untuk main slot pihak ketiga.",km:"🎰 ប្រើសមតុល្យប្រាក់បញ្ញើដើម្បីលេងស្លត។"},
