@@ -74,6 +74,17 @@
   .card .play{position:absolute;right:12px;bottom:12px;font-size:11px;font-weight:800;color:var(--gold);
     border:1px solid var(--gold);border-radius:999px;padding:3px 10px;white-space:nowrap}
 
+  /* ============== 老虎机：提供商分类卡 ============== */
+  .slot-provider{display:flex;align-items:center;gap:14px;border-radius:16px;padding:18px 16px;cursor:pointer;
+    background:linear-gradient(135deg,#2a2318,#161512);border:1px solid rgba(201,168,106,.32);
+    box-shadow:0 8px 22px rgba(0,0,0,.4);transition:transform .1s}
+  .slot-provider:active{transform:scale(.98)}
+  .sp-logo{font-size:26px;font-weight:900;letter-spacing:1px;color:#1a1712;background:linear-gradient(180deg,#ffd36b,var(--gold));
+    border-radius:12px;padding:12px 14px;line-height:1}
+  .sp-info{flex:1;min-width:0}
+  .sp-name{font-weight:800;font-size:16px;color:var(--text)}
+  .sp-desc{font-size:12px;color:var(--muted);margin-top:2px}
+  .sp-go{font-size:12px;font-weight:800;color:var(--gold);white-space:nowrap}
   /* ============== 老虎机游戏格子 ============== */
   #slotGrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .slot-card{position:relative;border-radius:14px;padding:10px 8px 12px;cursor:pointer;overflow:hidden;
@@ -259,9 +270,22 @@
 
     <!-- ===== 老虎机（第三方，如 JILI） ===== -->
     <section class="scene" id="scene-slot">
-      <div class="h-title">🎰 老虎机 · JILI</div>
-      <p class="tip" style="margin:-4px 2px 12px">🎰 用「存款余额」进入第三方老虎机游玩。</p>
-      <div id="slotGrid"></div>
+      <div class="h-title">🎰 老虎机</div>
+      <!-- 一级：提供商分类 -->
+      <div id="slotProviders">
+        <p class="tip" style="margin:-4px 2px 12px">🎰 用「存款余额」游玩第三方老虎机</p>
+        <div class="slot-provider" data-provider="jili">
+          <div class="sp-logo">JILI</div>
+          <div class="sp-info"><div class="sp-name">JILI 电子</div><div class="sp-desc">热门老虎机 · 真钱游戏</div></div>
+          <div class="sp-go">进入 ▶</div>
+        </div>
+      </div>
+      <!-- 二级：JILI 游戏列表（点分类后才展开） -->
+      <div id="slotGamesView" style="display:none">
+        <button class="back" id="slotBack">← 返回</button>
+        <p class="tip" style="margin:10px 2px">🎰 点游戏直接在这里玩</p>
+        <div id="slotGrid"></div>
+      </div>
     </section>
 
     <!-- ===== 转盘房间 ===== -->
@@ -548,9 +572,32 @@
         '</div>';
     }).join('');
   }
-  // ---------- 老虎机：游戏大厅 + 启动（JILI） ----------
+  // ---------- 老虎机：分类 → 游戏列表 → 内嵌开玩（JILI） ----------
   function slotLangCode() { return mgLang === "zh" ? "zh-CN" : "en-US"; }   // JILI 只有 zh-CN/zh-TW/en-US
   function slotGameName(nm) { nm = nm || {}; return nm[slotLangCode()] || nm["en-US"] || nm["zh-CN"] || "Game"; }
+  var _slotGamesLoaded = false;
+  function showSlotProviders() { var p = $("slotProviders"), v = $("slotGamesView"); if (p) p.style.display = ""; if (v) v.style.display = "none"; }
+  function showSlotGames() { var p = $("slotProviders"), v = $("slotGamesView"); if (p) p.style.display = "none"; if (v) v.style.display = ""; if (!_slotGamesLoaded) { _slotGamesLoaded = true; loadSlotGames(); } }
+  // 内嵌 iframe 开玩：留在 App(H5)里，不跳 Chrome
+  function openGameFrame(url) {
+    var old = document.getElementById("gameFrame"); if (old) old.remove();
+    var ov = document.createElement("div"); ov.id = "gameFrame";
+    ov.style.cssText = "position:fixed;inset:0;z-index:10000;background:#000;display:flex;flex-direction:column";
+    var bar = document.createElement("div");
+    bar.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:calc(8px + env(safe-area-inset-top)) 14px 8px;background:#16161a;border-bottom:1px solid rgba(201,168,106,.2)";
+    bar.innerHTML = '<span style="color:#c9a86a;font-weight:900;letter-spacing:1px">JILI</span>';
+    var close = document.createElement("button");
+    close.textContent = "✕ " + GT("退出", "Exit", "Keluar", "ចេញ");
+    close.style.cssText = "background:rgba(201,168,106,.15);color:#c9a86a;border:1px solid rgba(201,168,106,.3);border-radius:999px;padding:7px 16px;font-weight:800;font-size:13px;cursor:pointer";
+    close.onclick = function () { ov.remove(); loadProfile(); };
+    bar.appendChild(close);
+    var fr = document.createElement("iframe");
+    fr.src = url; fr.setAttribute("allow", "autoplay; fullscreen; clipboard-read; clipboard-write; payment");
+    fr.setAttribute("allowfullscreen", "true");
+    fr.style.cssText = "flex:1;width:100%;border:0;background:#000";
+    ov.appendChild(bar); ov.appendChild(fr);
+    document.body.appendChild(ov);
+  }
   async function loadSlotGames() {
     var box = $("slotGrid"); if (!box) return;
     box.innerHTML = '<div class="slot-msg">' + GT("加载中…", "Loading…", "Memuatkan…", "កំពុងផ្ទុក…") + '</div>';
@@ -580,8 +627,7 @@
       const res = await api("/api/slot/launch", { provider: "jili", gameId: String(gameId || ""), lang: slotLangCode() });
       const d = res.data || {};
       if (d.ok && d.launch_url) {
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.openLink) Telegram.WebApp.openLink(d.launch_url);
-        else window.open(d.launch_url, "_blank");
+        openGameFrame(d.launch_url);   // 在 App 内嵌打开，不跳 Chrome
         return;
       }
       if (d.error === "not_configured") { toast(GT("JILI 尚未开放，敬请期待 🚧", "JILI isn't open yet 🚧", "JILI belum dibuka 🚧", "JILI មិនទាន់បើក 🚧")); return; }
@@ -688,9 +734,12 @@
     document.querySelectorAll(".scene").forEach(function (s) { s.classList.toggle("active", s.id === "scene-" + scene); });
   }
   function setNav(nav) { document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("active", b.dataset.nav === nav); }); }
-  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); if (b.dataset.nav === "history") loadHistory(); if (b.dataset.nav === "slot") loadSlotGames(); }); });
+  document.querySelectorAll(".nav button").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav(b.dataset.nav); show(b.dataset.nav); if (b.dataset.nav === "vip" || b.dataset.nav === "profile") loadProfile(); if (b.dataset.nav === "history") loadHistory(); if (b.dataset.nav === "slot") showSlotProviders(); }); });
   document.querySelectorAll(".card").forEach(function (c) { c.addEventListener("click", function () { if (navLocked()) return; sfx("click"); openGame(c.dataset.game); }); });
   document.querySelectorAll("[data-back]").forEach(function (b) { b.addEventListener("click", function () { if (navLocked()) return; sfx("click"); setNav("lobby"); show("lobby"); }); });
+  // 老虎机：点分类进游戏列表 / 返回
+  document.querySelectorAll(".slot-provider").forEach(function (c) { c.addEventListener("click", function () { sfx("click"); if (c.dataset.provider === "jili") showSlotGames(); }); });
+  (function () { var sb = $("slotBack"); if (sb) sb.addEventListener("click", function () { sfx("click"); showSlotProviders(); }); })();
   $("popClose").addEventListener("click", function () { $("pop").classList.remove("show"); unlockRound(); afterPop(); });
 
   let afterPopFn = null;
@@ -1033,7 +1082,8 @@
     "👤 个人中心":{en:"👤 PROFILE",ms:"👤 PROFIL",km:"👤 ប្រវត្តិរូប"},
     "🧾 历史记录":{en:"🧾 HISTORY",ms:"🧾 SEJARAH",km:"🧾 ប្រវត្តិ"},"历史记录":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},
     "老虎机":{en:"Slots",ms:"Slot",km:"ស្លត"},"迷你游戏":{en:"Mini Games",ms:"Mini Game",km:"ល្បែងតូច"},"🎮 迷你游戏":{en:"🎮 MINI GAMES",ms:"🎮 MINI GAME",km:"🎮 ល្បែងតូច"},"历史":{en:"History",ms:"Sejarah",km:"ប្រវត្តិ"},"我的":{en:"Me",ms:"Saya",km:"ខ្ញុំ"},
-    "🎰 老虎机":{en:"🎰 SLOTS",ms:"🎰 SLOT",km:"🎰 ស្លត"},"🎰 老虎机 · JILI":{en:"🎰 SLOTS · JILI",ms:"🎰 SLOT · JILI",km:"🎰 ស្លត · JILI"},"JILI 电子":{en:"JILI Slots",ms:"JILI Slot",km:"JILI ស្លត"},"经典老虎机 · 真钱游戏":{en:"Classic slots · real-money",ms:"Slot klasik · wang sebenar",km:"ស្លតបុរាណ · លុយពិត"},"进入 ▶":{en:"Enter ▶",ms:"Masuk ▶",km:"ចូល ▶"},
+    "🎰 老虎机":{en:"🎰 SLOTS",ms:"🎰 SLOT",km:"🎰 ស្លត"},"🎰 老虎机 · JILI":{en:"🎰 SLOTS · JILI",ms:"🎰 SLOT · JILI",km:"🎰 ស្លត · JILI"},"JILI 电子":{en:"JILI Slots",ms:"JILI Slot",km:"JILI ស្លត"},"经典老虎机 · 真钱游戏":{en:"Classic slots · real-money",ms:"Slot klasik · wang sebenar",km:"ស្លតបុរាណ · លុយពិត"},"热门老虎机 · 真钱游戏":{en:"Popular slots · real-money",ms:"Slot popular · wang sebenar",km:"ស្លតពេញនិយម · លុយពិត"},"进入 ▶":{en:"Enter ▶",ms:"Masuk ▶",km:"ចូល ▶"},
+    "🎰 用「存款余额」游玩第三方老虎机":{en:"🎰 Play third-party slots with your Deposit Balance",ms:"🎰 Main slot pihak ketiga guna Baki Deposit",km:"🎰 លេងស្លតដោយសមតុល្យប្រាក់បញ្ញើ"},"🎰 点游戏直接在这里玩":{en:"🎰 Tap a game to play right here",ms:"🎰 Ketik game untuk main di sini",km:"🎰 ចុចហ្គេមលេងនៅទីនេះ"},
     "🎰 用「存款余额」进入第三方老虎机游玩。":{en:"🎰 Use your Deposit Balance to play third-party slots.",ms:"🎰 Guna Baki Deposit untuk main slot pihak ketiga.",km:"🎰 ប្រើសមតុល្យប្រាក់បញ្ញើដើម្បីលេងស្លត។"},
     "🎮 迷你游戏用「游戏积分」游玩":{en:"🎮 Mini games are played with your Points",ms:"🎮 Mini game guna Poin anda",km:"🎮 ល្បែងតូចលេងដោយពិន្ទុ"},
     "游戏积分":{en:"Points (mini games)",ms:"Poin (mini)",km:"ពិន្ទុ (ល្បែង)"},"存款余额":{en:"Deposit Balance",ms:"Baki Deposit",km:"សមតុល្យប្រាក់បញ្ញើ"},
