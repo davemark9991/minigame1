@@ -23,6 +23,7 @@ export default {
       if (path === "/api/spin") return handleSpin(request, env, db);
       if (path === "/api/history") return handleHistory(request, env, db);
       if (path === "/api/slot/launch") return handleSlotLaunch(request, env, db);
+      if (path === "/api/slot/settle") return handleSlotSettle(request, env, db);
       if (path === "/api/slot/games") return handleSlotGames(request, env, db);
       return handleWebhook(request, env, db, url);   // Telegram webhook
     }
@@ -408,9 +409,10 @@ async function handleProfile(request: Request, env: any, db: any): Promise<Respo
     username: p ? p.username : (user.username || user.first_name || "玩家"),
     player_id: p ? (p.player_id || "") : "",
     balance: p ? p.balance : 0,          // 迷你游戏积分 Points
+    cash_balance: p ? (p.cash_balance || 0) : 0,     // 存款余额 Deposit Balance（可玩 JILI）
     spins: 0,
     banned: p ? (p.status === "banned") : false,
-    total_deposit: p ? (p.total_deposit || 0) : 0,   // 存款余额 Deposit Balance
+    total_deposit: p ? (p.total_deposit || 0) : 0,   // 累计存款（VIP 用）
     total_bet: totalBet,
     total_won: totalWon,
     total_plays: plays,
@@ -427,9 +429,16 @@ async function handleHistory(request: Request, env: any, db: any): Promise<Respo
   const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const limit = Math.min(Math.max(parseInt(body.limit, 10) || 30, 1), 100);
+  const cat = String(body.category || "all");
+  // 分类：mini=迷你游戏(spin)；slot=老虎机(转入/转出)；deposit=存取款
+  let where = `tg_id = ?`; const binds: any[] = [user.id];
+  if (cat === "mini") where += ` AND type = 'spin'`;
+  else if (cat === "slot") where += ` AND type IN ('slot_in','slot_out')`;
+  else if (cat === "deposit") where += ` AND type IN ('deposit','withdraw','ext_credit')`;
+  binds.push(limit);
   const res: any = await db.prepare(
-    `SELECT type, amount, balance_after, note, created_at FROM transactions WHERE tg_id = ? ORDER BY id DESC LIMIT ?`
-  ).bind(user.id, limit).all();
+    `SELECT type, amount, balance_after, note, created_at FROM transactions WHERE ${where} ORDER BY id DESC LIMIT ?`
+  ).bind(...binds).all();
   return jsonResp({ ok: true, history: res.results || [] });
 }
 
@@ -506,10 +515,28 @@ async function jiliCall(cfg: any, path: string, signed: [string, string][], extr
   return last;   // 全部镜像都失败
 }
 function jiliAccount(tgId: number): string { return "mg" + tgId; }   // AgentKey 下唯一即可
+function jiliTxnId(tgId: number): string { return "mg" + tgId + "-" + Date.now() + "-" + Math.floor(Math.random() * 1000); }
 
-// 老虎机启动：转账钱包流程 —— 建号（幂等）→ 取登入网址。
-// 注：本步骤【不搬钱】，只让玩家能进入并看到 JILI 游戏。额度转入/转出（存款余额）在连通测试通过、
-//     且跑完 cash_balance 迁移后再接（见 /api/slot/settle 预留）。
+// 从 JILI 把该玩家的全部余额转回平台（type=1，全转），加进 cash_balance，写流水。返回转回的金额。
+async function jiliSettleOut(cfg: any, db: any, tgId: number): Promise<number> {
+  const account = jiliAccount(tgId);
+  const info = await jiliCall(cfg, "/GetMemberInfo", [["Accounts", account]]);
+  let bal = 0;
+  try { bal = Number((info.data && info.data.Data && info.data.Data[0] && info.data.Data[0].Balance) || 0); } catch (e) {}
+  if (!(bal > 0)) return 0;
+  const r = await jiliCall(cfg, "/ExchangeTransferByAgentId",
+    [["Account", account], ["TransactionId", jiliTxnId(tgId)], ["Amount", String(bal)], ["TransferType", "1"]]);
+  if (!r.data || r.data.ErrorCode !== 0) return 0;   // 失败：不改余额（下次进场会再试）
+  const out = Math.round(Number(r.data.Data && r.data.Data.CurrencyBefore || bal) * 100) / 100;
+  if (!(out > 0)) return 0;
+  const p: any = await db.prepare(`SELECT cash_balance FROM players WHERE tg_id=?`).bind(tgId).first();
+  const nb = Math.round(((Number(p && p.cash_balance || 0)) + out) * 100) / 100;
+  await db.prepare(`UPDATE players SET cash_balance=? WHERE tg_id=?`).bind(nb, tgId).run();
+  await logTx(db, tgId, "slot_out", out, nb, "JILI 转回");
+  return out;
+}
+
+// 老虎机启动（转账钱包）：建号 → 先把上一局残留转回 → 把存款余额转入 JILI → 取登入网址。
 async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Response> {
   const body = await readJson(request);
   const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
@@ -524,9 +551,24 @@ async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Re
   const gameId = String(body.gameId || cfg.gameId || "1");
   const lang = String(body.lang || "zh-CN");
   try {
-    // 1) 建立账号（已存在会回 101 Member Exists，忽略即可）
+    // 1) 建号（已存在回 101，忽略）
     await jiliCall(cfg, "/CreateMember", [["Account", account]]);
-    // 2) 取登入网址（Account, GameId, Lang 参与加密；HomeUrl/platform 不参与）
+    // 2) 先把上一局可能残留在 JILI 的余额转回，避免叠加
+    await jiliSettleOut(cfg, db, user.id);
+    // 3) 把存款余额转入 JILI（type=2）；成功后 cash_balance 清零
+    const p: any = await db.prepare(`SELECT cash_balance FROM players WHERE tg_id=?`).bind(user.id).first();
+    const cash = Math.round(Number(p && p.cash_balance || 0) * 100) / 100;
+    if (cash > 0) {
+      const t = await jiliCall(cfg, "/ExchangeTransferByAgentId",
+        [["Account", account], ["TransactionId", jiliTxnId(user.id)], ["Amount", String(cash)], ["TransferType", "2"]]);
+      if (t.data && t.data.ErrorCode === 0) {
+        await db.prepare(`UPDATE players SET cash_balance=0 WHERE tg_id=?`).bind(user.id).run();
+        await logTx(db, user.id, "slot_in", -cash, 0, "转入 JILI");
+      } else {
+        return jsonResp({ ok: false, error: "transfer_in_failed", code: t.data ? t.data.ErrorCode : null, message: t.data ? t.data.Message : t.raw });
+      }
+    }
+    // 4) 取登入网址
     const login = await jiliCall(cfg, "/LoginWithoutRedirect",
       [["Account", account], ["GameId", gameId], ["Lang", lang]],
       { platform: String(body.platform || "web") });
@@ -534,6 +576,22 @@ async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Re
       return jsonResp({ ok: true, provider, launch_url: String(login.data.Data) });
     }
     return jsonResp({ ok: false, error: "jili_error", provider, code: login.data ? login.data.ErrorCode : null, message: login.data ? login.data.Message : login.raw });
+  } catch (e: any) {
+    return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) });
+  }
+}
+
+// 结算：玩家退出游戏时调用，把 JILI 里的余额全部转回存款余额。
+async function handleSlotSettle(request: Request, env: any, db: any): Promise<Response> {
+  const body = await readJson(request);
+  const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
+  if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
+  const cfg = await getJiliCfg(db, env);
+  if (!jiliConfigured(cfg)) return jsonResp({ ok: false, error: "not_configured" });
+  try {
+    const out = await jiliSettleOut(cfg, db, user.id);
+    const p: any = await db.prepare(`SELECT cash_balance FROM players WHERE tg_id=?`).bind(user.id).first();
+    return jsonResp({ ok: true, transferred_back: out, cash_balance: Number(p && p.cash_balance || 0) });
   } catch (e: any) {
     return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) });
   }
@@ -611,6 +669,44 @@ async function adminJiliMember(env: any, db: any, body: any): Promise<Response> 
     const r = await jiliCall(cfg, "/GetMemberInfo", [["Accounts", account]]);
     return jsonResp({ ok: r.data && r.data.ErrorCode === 0, http: r.status, code: r.data ? r.data.ErrorCode : null, message: r.data ? r.data.Message : r.raw, data: r.data ? r.data.Data : null });
   } catch (e: any) { return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) }); }
+}
+
+// 迁移：给 players 加 cash_balance（存款余额/现金钱包）列。幂等：已存在会报错，忽略。只加列，不动任何现有余额。
+async function adminMigrate(db: any): Promise<Response> {
+  const results: any = {};
+  const migrations: [string, string][] = [
+    ["cash_balance", `ALTER TABLE players ADD COLUMN cash_balance REAL NOT NULL DEFAULT 0`],
+  ];
+  for (const [name, sql] of migrations) {
+    try { await db.prepare(sql).run(); results[name] = "added"; }
+    catch (e: any) { results[name] = /duplicate column/i.test(String(e && e.message || e)) ? "exists" : ("error: " + String(e && e.message || e)); }
+  }
+  return jsonResp({ ok: true, results });
+}
+
+// 后台手动存款/提款（操作现金钱包 cash_balance = 存款余额）
+async function adminCashAdjust(db: any, body: any, admin: any): Promise<Response> {
+  const tg_id = parseInt(body.tg_id, 10);
+  const amount = Math.round((parseFloat(body.amount) || 0) * 100) / 100;   // 保留 2 位
+  const kind = String(body.type || "deposit");   // deposit | withdraw
+  const note = String(body.note || "").slice(0, 200);
+  if (!tg_id || amount <= 0) return jsonResp({ ok: false, error: "bad_input", message: "tg_id 和正数 amount 必填" });
+  const p: any = await db.prepare(`SELECT cash_balance, total_deposit FROM players WHERE tg_id = ?`).bind(tg_id).first();
+  if (!p) return jsonResp({ ok: false, error: "not_found", message: "玩家不存在" });
+  const cur = Number(p.cash_balance || 0);
+  if (kind === "withdraw") {
+    if (cur < amount) return jsonResp({ ok: false, error: "insufficient", cash_balance: cur, message: "存款余额不足" });
+    const nb = Math.round((cur - amount) * 100) / 100;
+    await db.prepare(`UPDATE players SET cash_balance = ? WHERE tg_id = ?`).bind(nb, tg_id).run();
+    await logTx(db, tg_id, "withdraw", -amount, nb, note || ("提款 " + amount + " · " + (admin && admin.username || "")));
+    return jsonResp({ ok: true, cash_balance: nb });
+  }
+  // deposit：现金钱包 + 累计存款（VIP）一起加
+  const nb = Math.round((cur + amount) * 100) / 100;
+  const nd = Number(p.total_deposit || 0) + amount;
+  await db.prepare(`UPDATE players SET cash_balance = ?, total_deposit = ? WHERE tg_id = ?`).bind(nb, nd, tg_id).run();
+  await logTx(db, tg_id, "deposit", amount, nb, note || ("存款 " + amount + " · " + (admin && admin.username || "")));
+  return jsonResp({ ok: true, cash_balance: nb, total_deposit: nd });
 }
 
 async function handleSpin(request: Request, env: any, db: any): Promise<Response> {
@@ -750,6 +846,8 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/jili/member":     return adminJiliMember(env, db, body);
       case "/api/admin/jili/config/get": return adminJiliConfigGet(db, env);
       case "/api/admin/jili/config/save":return adminJiliConfigSave(db, body);
+      case "/api/admin/migrate":         return adminMigrate(db);
+      case "/api/admin/cash/adjust":     return adminCashAdjust(db, body, admin);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
