@@ -23,6 +23,7 @@ export default {
       if (path === "/api/spin") return handleSpin(request, env, db);
       if (path === "/api/history") return handleHistory(request, env, db);
       if (path === "/api/slot/launch") return handleSlotLaunch(request, env, db);
+      if (path === "/api/slot/games") return handleSlotGames(request, env, db);
       return handleWebhook(request, env, db, url);   // Telegram webhook
     }
 
@@ -513,6 +514,34 @@ async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Re
       return jsonResp({ ok: true, provider, launch_url: String(login.data.Data) });
     }
     return jsonResp({ ok: false, error: "jili_error", provider, code: login.data ? login.data.ErrorCode : null, message: login.data ? login.data.Message : login.raw });
+  } catch (e: any) {
+    return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) });
+  }
+}
+
+// 玩家端老虎机大厅：返回 JILI 老虎机（GameCategoryId=1）列表。GetGameList 不常变，做 isolate 内缓存（10 分钟）。
+let _jiliGamesCache: { at: number; games: any[] } | null = null;
+async function handleSlotGames(request: Request, env: any, db: any): Promise<Response> {
+  const body = await readJson(request);
+  const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
+  if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
+  if (!(await jiliConfigured(env))) return jsonResp({ ok: false, error: "not_configured" });
+  const now = Date.now();
+  if (_jiliGamesCache && (now - _jiliGamesCache.at) < 600000) {
+    return jsonResp({ ok: true, provider: "jili", games: _jiliGamesCache.games, cached: true });
+  }
+  try {
+    const r = await jiliCall(env, "/GetGameList", []);
+    if (!r.data || r.data.ErrorCode !== 0 || !Array.isArray(r.data.Data)) {
+      return jsonResp({ ok: false, error: "jili_error", code: r.data ? r.data.ErrorCode : null, message: r.data ? r.data.Message : r.raw });
+    }
+    // 只取老虎机(1)，按 Sorting 排序，精简字段
+    const games = r.data.Data
+      .filter((g: any) => g.GameCategoryId === 1)
+      .sort((a: any, b: any) => (a.Sorting || 9999) - (b.Sorting || 9999))
+      .map((g: any) => ({ id: g.GameId, name: g.name || {}, jp: !!g.JP, freespin: !!g.Freespin }));
+    _jiliGamesCache = { at: now, games };
+    return jsonResp({ ok: true, provider: "jili", games });
   } catch (e: any) {
     return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) });
   }
