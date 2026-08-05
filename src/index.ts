@@ -454,10 +454,13 @@ function jiliDate(now: Date): string {
   return yy + mm + dd;
 }
 function jiliRand(): string { return Math.random().toString(36).slice(2, 8).padEnd(6, "0"); }
+// JILI_API_BASE 可填多个镜像域名（逗号分隔），逐个尝试，某个被封/超时/回非JSON 就换下一个
+function jiliBases(env: any): string[] {
+  return String(env.JILI_API_BASE || "").split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean);
+}
 // signed：参与加密的参数（按各 API 文件表格顺序）；extra：一起送出但不参与加密的参数
 async function jiliCall(env: any, path: string, signed: [string, string][], extra?: Record<string, string>): Promise<any> {
   const agentId = String(env.JILI_AGENT_ID), agentKey = String(env.JILI_AGENT_KEY);
-  const base = String(env.JILI_API_BASE).replace(/\/+$/, "");
   const paramStr = [...signed.map(([k, v]) => `${k}=${v}`), `AgentId=${agentId}`].join("&");
   const kg = await md5hex(jiliDate(new Date()) + agentId + agentKey);
   const key = jiliRand() + (await md5hex(paramStr + kg)) + jiliRand();
@@ -465,10 +468,21 @@ async function jiliCall(env: any, path: string, signed: [string, string][], extr
   for (const [k, v] of signed) form.append(k, v);
   if (extra) for (const k in extra) form.append(k, extra[k]);
   form.append("AgentId", agentId); form.append("Key", key);
-  const r = await fetch(base + path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString() });
-  const txt = await r.text();
-  let data: any = null; try { data = JSON.parse(txt); } catch (e) {}
-  return { status: r.status, data, raw: txt };
+  const body = form.toString();
+  const bases = jiliBases(env);
+  let last: any = { status: 0, data: null, raw: "no base configured" };
+  for (const base of bases) {
+    try {
+      const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 12000);
+      const r = await fetch(base + path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal: ctrl.signal });
+      clearTimeout(to);
+      const txt = await r.text();
+      let data: any = null; try { data = JSON.parse(txt); } catch (e) {}
+      last = { status: r.status, data, raw: txt, base };
+      if (data && typeof data.ErrorCode !== "undefined") return last;   // 拿到有效 JSON 就用它（含业务错误码）
+    } catch (e: any) { last = { status: 0, data: null, raw: String(e && e.message || e) }; }
+  }
+  return last;   // 全部镜像都失败
 }
 function jiliAccount(env: any, tgId: number): string { return "mg" + tgId; }   // AgentKey 下唯一即可
 async function jiliConfigured(env: any): Promise<boolean> { return !!(env.JILI_API_BASE && env.JILI_AGENT_ID && env.JILI_AGENT_KEY); }
