@@ -455,13 +455,33 @@ function jiliDate(now: Date): string {
   return yy + mm + dd;
 }
 function jiliRand(): string { return Math.random().toString(36).slice(2, 8).padEnd(6, "0"); }
-// JILI_API_BASE 可填多个镜像域名（逗号分隔），逐个尝试，某个被封/超时/回非JSON 就换下一个
-function jiliBases(env: any): string[] {
-  return String(env.JILI_API_BASE || "").split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean);
+// JILI 配置来源：优先 D1 settings（部署不会被清空），回退到环境变量。
+async function getJiliCfg(db: any, env: any): Promise<any> {
+  const cfg: any = {
+    apiBase: env.JILI_API_BASE || "",
+    agentId: env.JILI_AGENT_ID || "",
+    agentKey: env.JILI_AGENT_KEY || "",
+    gameId: env.JILI_GAME_ID || "1",
+  };
+  try {
+    const res: any = await db.prepare(`SELECT key, value FROM settings WHERE key IN ('jili_api_base','jili_agent_id','jili_agent_key','jili_game_id')`).all();
+    for (const r of res.results || []) {
+      if (r.key === "jili_api_base" && r.value) cfg.apiBase = r.value;
+      if (r.key === "jili_agent_id" && r.value) cfg.agentId = r.value;
+      if (r.key === "jili_agent_key" && r.value) cfg.agentKey = r.value;
+      if (r.key === "jili_game_id" && r.value) cfg.gameId = r.value;
+    }
+  } catch (e) {}
+  return cfg;
+}
+function jiliConfigured(cfg: any): boolean { return !!(cfg && cfg.apiBase && cfg.agentId && cfg.agentKey); }
+// apiBase 可填多个镜像域名（逗号分隔），逐个尝试，某个被封/超时/回非JSON 就换下一个
+function jiliBases(cfg: any): string[] {
+  return String(cfg.apiBase || "").split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean);
 }
 // signed：参与加密的参数（按各 API 文件表格顺序）；extra：一起送出但不参与加密的参数
-async function jiliCall(env: any, path: string, signed: [string, string][], extra?: Record<string, string>): Promise<any> {
-  const agentId = String(env.JILI_AGENT_ID), agentKey = String(env.JILI_AGENT_KEY);
+async function jiliCall(cfg: any, path: string, signed: [string, string][], extra?: Record<string, string>): Promise<any> {
+  const agentId = String(cfg.agentId), agentKey = String(cfg.agentKey);
   const paramStr = [...signed.map(([k, v]) => `${k}=${v}`), `AgentId=${agentId}`].join("&");
   const kg = await md5hex(jiliDate(new Date()) + agentId + agentKey);
   const key = jiliRand() + (await md5hex(paramStr + kg)) + jiliRand();
@@ -470,7 +490,7 @@ async function jiliCall(env: any, path: string, signed: [string, string][], extr
   if (extra) for (const k in extra) form.append(k, extra[k]);
   form.append("AgentId", agentId); form.append("Key", key);
   const body = form.toString();
-  const bases = jiliBases(env);
+  const bases = jiliBases(cfg);
   let last: any = { status: 0, data: null, raw: "no base configured" };
   for (const base of bases) {
     try {
@@ -485,8 +505,7 @@ async function jiliCall(env: any, path: string, signed: [string, string][], extr
   }
   return last;   // 全部镜像都失败
 }
-function jiliAccount(env: any, tgId: number): string { return "mg" + tgId; }   // AgentKey 下唯一即可
-async function jiliConfigured(env: any): Promise<boolean> { return !!(env.JILI_API_BASE && env.JILI_AGENT_ID && env.JILI_AGENT_KEY); }
+function jiliAccount(tgId: number): string { return "mg" + tgId; }   // AgentKey 下唯一即可
 
 // 老虎机启动：转账钱包流程 —— 建号（幂等）→ 取登入网址。
 // 注：本步骤【不搬钱】，只让玩家能进入并看到 JILI 游戏。额度转入/转出（存款余额）在连通测试通过、
@@ -497,17 +516,18 @@ async function handleSlotLaunch(request: Request, env: any, db: any): Promise<Re
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
   const provider = String(body.provider || "jili").toLowerCase();
   if (provider !== "jili") return jsonResp({ ok: false, error: "unknown_provider", provider });
-  if (!(await jiliConfigured(env))) {
-    return jsonResp({ ok: false, error: "not_configured", provider, message: "JILI 尚未配置（需 API base + AgentId + AgentKey 密钥）" });
+  const cfg = await getJiliCfg(db, env);
+  if (!jiliConfigured(cfg)) {
+    return jsonResp({ ok: false, error: "not_configured", provider, message: "JILI 尚未配置（需 API base + AgentId + AgentKey）" });
   }
-  const account = jiliAccount(env, user.id);
-  const gameId = String(body.gameId || env.JILI_GAME_ID || "1");
+  const account = jiliAccount(user.id);
+  const gameId = String(body.gameId || cfg.gameId || "1");
   const lang = String(body.lang || "zh-CN");
   try {
     // 1) 建立账号（已存在会回 101 Member Exists，忽略即可）
-    await jiliCall(env, "/CreateMember", [["Account", account]]);
+    await jiliCall(cfg, "/CreateMember", [["Account", account]]);
     // 2) 取登入网址（Account, GameId, Lang 参与加密；HomeUrl/platform 不参与）
-    const login = await jiliCall(env, "/LoginWithoutRedirect",
+    const login = await jiliCall(cfg, "/LoginWithoutRedirect",
       [["Account", account], ["GameId", gameId], ["Lang", lang]],
       { platform: String(body.platform || "web") });
     if (login.data && login.data.ErrorCode === 0 && login.data.Data) {
@@ -525,13 +545,14 @@ async function handleSlotGames(request: Request, env: any, db: any): Promise<Res
   const body = await readJson(request);
   const user = await validateInitData(body.initData || "", env.TELEGRAM_BOT_TOKEN);
   if (!user) return jsonResp({ ok: false, error: "auth" }, 401);
-  if (!(await jiliConfigured(env))) return jsonResp({ ok: false, error: "not_configured" });
+  const cfg = await getJiliCfg(db, env);
+  if (!jiliConfigured(cfg)) return jsonResp({ ok: false, error: "not_configured" });
   const now = Date.now();
   if (_jiliGamesCache && (now - _jiliGamesCache.at) < 600000) {
     return jsonResp({ ok: true, provider: "jili", games: _jiliGamesCache.games, cached: true });
   }
   try {
-    const r = await jiliCall(env, "/GetGameList", []);
+    const r = await jiliCall(cfg, "/GetGameList", []);
     if (!r.data || r.data.ErrorCode !== 0 || !Array.isArray(r.data.Data)) {
       return jsonResp({ ok: false, error: "jili_error", code: r.data ? r.data.ErrorCode : null, message: r.data ? r.data.Message : r.raw });
     }
@@ -547,26 +568,47 @@ async function handleSlotGames(request: Request, env: any, db: any): Promise<Res
   }
 }
 
-// 后台【只读】连通测试：取游戏列表（不搬钱，安全）——用来确认 API base + AgentId + AgentKey + 签名都正确
-async function adminJiliGames(env: any): Promise<Response> {
-  if (!(await jiliConfigured(env))) {
-    // 顺带自检 MD5 是否可用（应等于 9424ffdd6de016a5f90a97a55d99c717）
+// 后台：保存 JILI 配置到 D1 settings（部署不会清空）。只写入本次带来的字段。
+async function adminJiliConfigSave(db: any, body: any): Promise<Response> {
+  const map: [string, any][] = [
+    ["jili_api_base", body.api_base], ["jili_agent_id", body.agent_id],
+    ["jili_agent_key", body.agent_key], ["jili_game_id", body.game_id],
+  ];
+  let saved = 0;
+  for (const [k, v] of map) {
+    if (v === undefined || v === null || String(v).trim() === "") continue;
+    await db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).bind(k, String(v).trim()).run();
+    saved++;
+  }
+  return jsonResp({ ok: true, saved });
+}
+// 后台：查看 JILI 配置状态（密钥打码，不回传明文）
+async function adminJiliConfigGet(db: any, env: any): Promise<Response> {
+  const cfg = await getJiliCfg(db, env);
+  const mask = (s: string) => (s ? (s.length <= 6 ? "••••" : s.slice(0, 3) + "••••" + s.slice(-3)) : "");
+  return jsonResp({ ok: true, configured: jiliConfigured(cfg), api_base_set: !!cfg.apiBase, agent_id: cfg.agentId, game_id: cfg.gameId, agent_key_masked: mask(cfg.agentKey), mirrors: jiliBases(cfg).length });
+}
+// 后台【只读】连通测试：取游戏列表（不搬钱，安全）
+async function adminJiliGames(env: any, db: any): Promise<Response> {
+  const cfg = await getJiliCfg(db, env);
+  if (!jiliConfigured(cfg)) {
     const md5test = await md5hex("19011abcd_RMBbe8e08f95357d215921f91c6a533f74d3194de52");
-    return jsonResp({ ok: false, error: "not_configured", message: "先设 JILI_API_BASE / JILI_AGENT_ID / JILI_AGENT_KEY", md5_selftest: md5test, md5_ok: md5test === "9424ffdd6de016a5f90a97a55d99c717" });
+    return jsonResp({ ok: false, error: "not_configured", message: "先设 JILI 配置（api_base / agent_id / agent_key）", md5_selftest: md5test, md5_ok: md5test === "9424ffdd6de016a5f90a97a55d99c717" });
   }
   try {
-    const r = await jiliCall(env, "/GetGameList", []);
+    const r = await jiliCall(cfg, "/GetGameList", []);
     const games = r.data && Array.isArray(r.data.Data) ? r.data.Data : [];
     return jsonResp({ ok: r.data && r.data.ErrorCode === 0, http: r.status, code: r.data ? r.data.ErrorCode : null, message: r.data ? r.data.Message : r.raw, count: games.length, games: games.slice(0, 200) });
   } catch (e: any) { return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) }); }
 }
 // 后台【只读】查询某玩家在 JILI 的钱包余额/状态（不搬钱）
-async function adminJiliMember(env: any, body: any): Promise<Response> {
-  if (!(await jiliConfigured(env))) return jsonResp({ ok: false, error: "not_configured" });
+async function adminJiliMember(env: any, db: any, body: any): Promise<Response> {
+  const cfg = await getJiliCfg(db, env);
+  if (!jiliConfigured(cfg)) return jsonResp({ ok: false, error: "not_configured" });
   const account = String(body.account || "").trim();
   if (!account) return jsonResp({ ok: false, error: "bad_input", message: "account required" });
   try {
-    const r = await jiliCall(env, "/GetMemberInfo", [["Accounts", account]]);
+    const r = await jiliCall(cfg, "/GetMemberInfo", [["Accounts", account]]);
     return jsonResp({ ok: r.data && r.data.ErrorCode === 0, http: r.status, code: r.data ? r.data.ErrorCode : null, message: r.data ? r.data.Message : r.raw, data: r.data ? r.data.Data : null });
   } catch (e: any) { return jsonResp({ ok: false, error: "server", message: String(e && e.message || e) }); }
 }
@@ -704,8 +746,10 @@ async function handleAdmin(request: Request, env: any, db: any, path: string): P
       case "/api/admin/apic/list":       return adminApiList(db, body);
       case "/api/admin/apic/credit":     return extCredit(db, body);
       case "/api/admin/apic/totals":     return adminSourceTotals(db);
-      case "/api/admin/jili/games":      return adminJiliGames(env);
-      case "/api/admin/jili/member":     return adminJiliMember(env, body);
+      case "/api/admin/jili/games":      return adminJiliGames(env, db);
+      case "/api/admin/jili/member":     return adminJiliMember(env, db, body);
+      case "/api/admin/jili/config/get": return adminJiliConfigGet(db, env);
+      case "/api/admin/jili/config/save":return adminJiliConfigSave(db, body);
       default:                           return jsonResp({ ok: false, error: "not_found" }, 404);
     }
   } catch (e: any) {
